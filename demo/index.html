@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learning Dungeon - Demo</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #0b0f19;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Background FX */
+        .bg-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            height: 80vw;
+            background: radial-gradient(circle, rgba(142, 36, 170, 0.2) 0%, rgba(0, 0, 0, 0) 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Boss Health */
+        .health-container {
+            width: 80%;
+            height: 40px;
+            background: #2a2a2a;
+            border: 3px solid #444;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            margin-bottom: 30px;
+        }
+
+        .health-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #d32f2f, #ff5252);
+            width: 100%;
+            transition: width 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+
+        .health-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        /* Boss Image */
+        .boss-container {
+            height: 50vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #bossImage {
+            max-height: 100%;
+            max-width: 100%;
+            filter: drop-shadow(0 0 30px rgba(255, 0, 0, 0.4));
+            transition: transform 0.1s;
+        }
+
+        /* Hit Animation */
+        @keyframes shake {
+            0% {
+                transform: translate(1px, 1px) rotate(0deg);
+                filter: brightness(1) sepia(0) hue-rotate(0deg) saturate(1);
+            }
+
+            10% {
+                transform: translate(-1px, -2px) rotate(-1deg);
+                filter: brightness(1.5) sepia(1) hue-rotate(-50deg) saturate(5);
+            }
+
+            20% {
+                transform: translate(-3px, 0px) rotate(1deg);
+                filter: brightness(1.2) sepia(1) hue-rotate(-50deg) saturate(5);
+            }
+
+            30% {
+                transform: translate(3px, 2px) rotate(0deg);
+            }
+
+            40% {
+                transform: translate(1px, -1px) rotate(1deg);
+            }
+
+            50% {
+                transform: translate(-1px, 2px) rotate(-1deg);
+            }
+
+            100% {
+                transform: translate(0, 0) rotate(0deg);
+                filter: brightness(1) sepia(0) hue-rotate(0deg) saturate(1);
+            }
+        }
+
+        .hit-anim {
+            animation: shake 0.4s;
+        }
+
+        /* QR Code Area */
+        .qr-section {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .qr-section p {
+            margin: 0 0 15px 0;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #ffca28;
+        }
+
+        #qrcode {
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        /* Dead overlay */
+        #deadOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #deadOverlay h2 {
+            font-size: 5rem;
+            color: #d32f2f;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px red;
+            margin: 0 0 20px 0;
+        }
+
+        .company-logo {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+        }
+
+        .company-logo img {
+            height: 80px;
+            margin-right: 15px;
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+        }
+
+        .slogan {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffca28;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 1);
+            transition: opacity 1s ease-in-out;
+        }
+
+        .admin-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .admin-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        .admin-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+    <!-- Load Socket.IO from CDN -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <!-- Load QRCode.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+
+    <div class="company-logo">
+        <img src="https://i.postimg.cc/Vst0Zf0h/Aim-Education-Logo-Apps.png" alt="AIM Education">
+        <div class="slogan" id="sloganText">¡Gamifica tu aula!</div>
+    </div>
+
+    <div class="admin-controls">
+        <button class="admin-btn" onclick="reviveBoss()">Revivir Jefe</button>
+        <button class="admin-btn" onclick="nextBoss()">Siguiente Jefe</button>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1 id="bossName">Cargando...</h1>
+        </div>
+
+        <div class="health-container">
+            <div class="health-bar" id="healthBar"></div>
+            <div class="health-text"><span id="hpText">0 / 0</span></div>
+        </div>
+
+        <div class="boss-container">
+            <img id="bossImage" src="" alt="Boss">
+        </div>
+    </div>
+
+    <div class="qr-section">
+        <p>¡Escanea para atacar!</p>
+        <div id="qrcode"></div>
+    </div>
+
+    <div id="deadOverlay">
+        <h2>¡JEFE DERROTADO!</h2>
+        <p style="font-size: 1.5rem;">Mirad vuestros móviles</p>
+        <div id="intermissionTimer"
+            style="margin-top: 30px; font-size: 2.5rem; font-weight: bold; color: #e0e0e0; letter-spacing: 2px;"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentBoss = null;
+        let isDead = false;
+
+        // Generate QR code pointing to the mobile view
+        const mobileUrl = window.location.origin + '/demo/mobile.html';
+        new QRCode(document.getElementById("qrcode"), {
+            text: mobileUrl,
+            width: 150,
+            height: 150,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        // Join room
+        socket.emit('demo_tv_join');
+
+        // State update handling
+        socket.on('demo_state_update', (data) => {
+            currentBoss = data.boss;
+            isDead = currentBoss.hp <= 0;
+            updateUI();
+        });
+
+        // Hit handling
+        socket.on('demo_boss_hit', (data) => {
+            if (!currentBoss) return;
+            currentBoss.hp = data.newHp;
+            updateHPUI();
+
+            // Visual feedback
+            const img = document.getElementById('bossImage');
+            img.classList.remove('hit-anim');
+            void img.offsetWidth; // Trigger reflow
+            img.classList.add('hit-anim');
+
+            if (currentBoss.hp <= 0 && !isDead) {
+                isDead = true;
+                showDead();
+            }
+        });
+
+        socket.on('demo_boss_dead', () => {
+            isDead = true;
+            if (currentBoss) currentBoss.hp = 0;
+            updateHPUI();
+            showDead();
+        });
+
+        socket.on('demo_intermission_tick', (seconds) => {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('intermissionTimer').textContent = `Próximo combate en: ${mins}:${secs}`;
+
+            // Ensure overlay is shown if we join mid-intermission
+            if (document.getElementById('deadOverlay').style.display !== 'flex') {
+                showDead();
+            }
+        });
+
+        // Slogan rotation logic
+        const slogans = ["¡Gamifica tu aula!", "Aprende jugando...", "¿Quieres más información?"];
+        let sloganIndex = 0;
+        setInterval(() => {
+            const el = document.getElementById('sloganText');
+            el.style.opacity = 0;
+            setTimeout(() => {
+                sloganIndex = (sloganIndex + 1) % slogans.length;
+                el.textContent = slogans[sloganIndex];
+                el.style.opacity = 1;
+            }, 1000);
+        }, 5000);
+
+        function updateUI() {
+            if (!currentBoss) return;
+            document.getElementById('bossName').textContent = currentBoss.name;
+            document.getElementById('bossImage').src = currentBoss.img;
+            updateHPUI();
+
+            if (isDead) {
+                showDead();
+            } else {
+                document.getElementById('deadOverlay').style.display = 'none';
+                document.getElementById('bossImage').style.filter = 'drop-shadow(0 0 30px rgba(255,0,0,0.4))';
+            }
+        }
+
+        function updateHPUI() {
+            if (!currentBoss) return;
+            const pct = Math.max(0, (currentBoss.hp / currentBoss.totalHp) * 100);
+            document.getElementById('healthBar').style.width = `${pct}%`;
+            document.getElementById('hpText').textContent = `${Math.ceil(currentBoss.hp)} / ${currentBoss.totalHp}`;
+        }
+
+        function showDead() {
+            document.getElementById('deadOverlay').style.display = 'flex';
+            document.getElementById('healthBar').style.width = '0%';
+            document.getElementById('bossImage').style.filter = 'grayscale(1) brightness(0.3)';
+            // Keep timer visible or clear its text until first tick
+            if (!document.getElementById('intermissionTimer').textContent) {
+                document.getElementById('intermissionTimer').textContent = "Iniciando recuperación...";
+            }
+        }
+
+        function nextBoss() {
+            const nextIdx = prompt("Introduce indice del jefe (0, 1 o 2):");
+            if (nextIdx !== null) {
+                socket.emit('demo_change_boss', parseInt(nextIdx));
+            }
+        }
+
+        function reviveBoss() {
+            if (confirm("¿Seguro que quieres revivir al jefe actual?")) {
+                socket.emit('demo_revive_boss');
+            }
+        }
+    </script>
+</body>
+
+</html>

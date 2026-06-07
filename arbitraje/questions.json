@@ -1,0 +1,262 @@
+[
+  {
+    "id": 4,
+    "question": "Vestimenta de un Árbitro:",
+    "options": [
+      "A. Pantalón y chaqueta azul, camisa blanca, calcetines largos de cualquier color, zapatillas blancas y corbata azul.",
+      "B. Traje azul oscuro, corbata azul oscuro, camisa blanca manga larga, calcetines blancos, zapatillas blancas y bolígrafo.",
+      "C. La ropa propia de un Árbitro."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 5,
+    "question": "Define las dimensiones de una zona de competición, ¿Son las mismas para todas las categorías? ¿Y en caso de estar elevado?",
+    "options": [
+      "A. 8 X 8 más un metro para seguridad, elevado de 50 cm a un metro con dos metros más de seguridad.",
+      "B. 9 x 9 un metro de seguridad con elevación dos metros de seguridad.",
+      "C. 8x8 para combate más 1 metro de seguridad y 10x10 para el resto de las categorías, en caso de estar elevada la superficie total será de 14x14."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 6,
+    "question": "Si el equipamiento de un competidor no es el adecuado, ¿de cuánto tiempo dispone para cambiarlo?",
+    "options": [
+      "A. 2 minutos.",
+      "B. 3 minutos.",
+      "C. De 3 a 5 minutos."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 7,
+    "question": "¿Cuál es la edad mínima para ser árbitro internacional “A”?",
+    "options": [
+      "A. 25 años.",
+      "B. No hay edad mínima.",
+      "C. 21 años."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 8,
+    "question": "¿Cuál es el grado mínimo para obtener el título de árbitro internacional “B”?",
+    "options": [
+      "A. I Dan.",
+      "B. II Dan.",
+      "C. III Dan."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 9,
+    "question": "¿Cuántos árbitros son necesarios para la correcta valoración en la competición de formas?",
+    "options": [
+      "A. En la medida de lo posible 1 presidente del jurado, un miembro del jurado, un operador informático, un árbitro central, 4 jueces y 2 verificadores de equipamiento. En la mesa deben oficiar como mínimo 1 presidente de jurado y un operador informático. En caso de no poder disponer de 4 jueces, se podrá puntuar con 2.",
+      "B. Los que sean necesarios.",
+      "C. Mínimo de 3 personas."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 10,
+    "question": "¿Qué categorías existen en la competición de formas individual?",
+    "options": [
+      "A. De primero a sexto Dan.",
+      "B. Primer Dan, segundo Dan, tercer Dan y de cuarto a sexto Dan.",
+      "C. En función de los participantes."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 11,
+    "question": "Describe el procedimiento por el que se deciden las 2 formas designadas para cada categoría individual.",
+    "options": [
+      "A. La primera forma designada se elegirá por sorteo entre las 3 últimas formas acorde al nivel o grado de la división, la segunda forma designada se elegirá por sorteo entre las formas restantes apropiadas a la graduación.",
+      "B. La primera forma designada se elige por sorteo y la segunda es opcional.",
+      "C. Las dos formas son opcionales."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 12,
+    "question": "¿En qué forma aparecen por primera vez los movimientos lentos?",
+    "options": [
+      "A. Hwa-Rang.",
+      "B. Joon-Gun.",
+      "C. Won-Hyo."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 13,
+    "question": "Nombra la única forma en la cual los competidores no empiezan alineados",
+    "options": [
+      "A. Ul-Ji.",
+      "B. Yon-Gae.",
+      "C. Moon-Moo"
+    ],
+    "answer": 0
+  },
+  {
+    "id": 14,
+    "question": "¿Cuántos árbitros son necesarios para la competición de combate? ¿Qué función desempeña cada uno?",
+    "options": [
+      "A. En la medida de lo posible un presidente del jurado, un miembro del jurado, un operador de competición, un árbitro central, cuatro jueces y dos verificadores de equipamiento. En la mesa deberán oficiar como mínimo un presidente del jurado un operador de computación, en caso de no poder disponer de cuatro jueces, se podrá puntuar con dos.",
+      "B. En la medida de lo posible un presidente del jurado, un miembro del jurado, un operador de competición, un árbitro central, cuatro jueces y dos verificadores de equipamiento. En la mesa deberán oficiar como mínimo un presidente del jurado un operador de computación, en caso de no poder disponer de cuatro jueces, se podrá puntuar con tres.",
+      "C. Las dos anteriores son válidas."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 15,
+    "question": "¿Qué zonas del cuerpo se pueden golpear?",
+    "options": [
+      "A. Rodillas, espalda y tronco.",
+      "B. Parte frontal del cuerpo de cintura hacia arriba (excepto el cuello).",
+      "C. Espalda y parte frontal del cuerpo (cabeza incluida)."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 16,
+    "question": "Nombra 3 amonestaciones",
+    "options": [
+      "A. Caerse, salir y morder.",
+      "B. Caerse, salir y golpe ilegal no intencionado.",
+      "C. Caerse, salir y atacar a un oponente caído."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 17,
+    "question": "¿Qué sucede cuando un competidor recibe 3 deducciones directas de un punto?",
+    "options": [
+      "A. Restamos tres puntos.",
+      "B. Se descalifica.",
+      "C. El presidente de mesa llama al organizador del evento."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 18,
+    "question": "¿De cuánto tiempo dispone el servicio médico para diagnosticar a un competidor que ha sufrido un percance?",
+    "options": [
+      "A. 3 minutos.",
+      "B. 2 minutos cada vez que lo necesita el competidor.",
+      "C. No hay límite de tiempo para los médicos."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 19,
+    "question": "¿Cuántas posiciones de guardia debe realizar un competidor en cada rompimiento?",
+    "options": [
+      "A. 3",
+      "B. 5",
+      "C. 2"
+    ],
+    "answer": 2
+  },
+  {
+    "id": 20,
+    "question": "¿Cómo es la puntuación en esta modalidad? (Rompimientos de Potencia)",
+    "options": [
+      "A. Se reciben tantos puntos como placas separadas.",
+      "B. Cada placa separada contará como tres (3) puntos y cada placa doblada contará como un (1) punto.",
+      "C. Gana el competidor que consiga separar todas las tablas."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 21,
+    "question": "Nombra las técnicas que se realizan en esta modalidad. ¿Son las mismas para competidores masculinos y femeninos? (Rompimientos de Potencia)",
+    "options": [
+      "A. Son opcionales.",
+      "B. Son las mismas tanto para competidores masculinos como femeninos: dos técnicas de mano y tres de pierna a elegir por el competidor.",
+      "C. Masculino: Ap-Joomuk Jirugi, Sonkal Taerigi, Yopcha Jirugi, Dollyo Chagi y Bandae Dollyo Chagi; Femenino: Sonkal Taerigi, Yopcha Jirugi y Dollyo Chagi."
+    ],
+    "answer": 2
+  },
+  {
+    "id": 22,
+    "question": "¿Hay un tiempo establecido para esta categoría? (Rompimientos de Potencia)",
+    "options": [
+      "A. No hay límite de tiempo.",
+      "B. Sí, 5 minutos.",
+      "C. Sí, 5 minutos para los competidores masculinos y 3 minutos para las competidoras femeninas."
+    ],
+    "answer": 2
+  },
+  {
+    "id": 23,
+    "question": "¿Cuántos árbitros son necesarios para la competición de técnicas especiales? ¿Qué función desempeña cada uno?",
+    "options": [
+      "A. Siempre habrá un mínimo de dos (2) árbitros.",
+      "B. Se decidirá en función de los árbitros disponibles.",
+      "C. En la medida de lo posible, un (1) Presidente del Jurado, un (1) Miembro del Jurado, un (1) Operador Informático y tres (3) Jueces. En la mesa deberán oficiar como mínimo un (1) Presidente del Jurado y un (1) Operador Informático."
+    ],
+    "answer": 2
+  },
+  {
+    "id": 24,
+    "question": "Nombra las cinco técnicas que se realizan en esta modalidad. ¿Son las mismas para competidores masculinos y femeninos? (Técnicas Especiales)",
+    "options": [
+      "A. Twimyo Nopi Apcha Busigi, Twimyo Nopi Dollyo Chagi, Twimyo Bandae Dollyo Chagi, Twio Dolmyo Yopcha Jirugi y Twimyo Nopi Yop Cha Jirugi. Sí, son las mismas.",
+      "B. Masculino: Twimyo Nopi Apcha Busigi, Twimyo Nopi Dollyo Chagi, Twimyo Bandae Dollyo Chagi, Twio Dolmyo Yopcha Jirugi y Twimyo Nopi Yop Cha Jirugi. Femenino: Twimyo Nopi Apcha Busigi, Twimyo Nopi Dollyo Chagi y Twimyo Nopi Yop Cha Jirugi.",
+      "C. Son opcionales."
+    ],
+    "answer": 0
+  },
+  {
+    "id": 25,
+    "question": "¿Cómo es la puntuación en esta modalidad? (Técnicas Especiales)",
+    "options": [
+      "A. Se reciben tantos puntos como placas deplazadas.",
+      "B. Cada placa desplazada contará como un (1) punto, excepto en Twimyo Nopi Yop Cha Jirugi, que contará dos (2).",
+      "C. Cada placa completamente desplazada contará como tres (3) puntos y cada placa medio desplazada contará como un (1) punto."
+    ],
+    "answer": 2
+  },
+  {
+    "id": 26,
+    "question": "¿Cuántos árbitros son necesarios para la competición de combate libre preestablecido? ¿Qué función desempeña cada uno?",
+    "options": [
+      "A. En la medida de lo posible un presidente del jurado, un miembro del jurado, un operador de competición, un árbitro central, cuatro jueces y dos verificadores de equipamiento. En la mesa deberán oficiar como mínimo un presidente del jurado un operador de computación, en caso de no poder disponer de cuatro jueces, se podrá puntuar con dos.",
+      "B. En la medida de lo posible un presidente de jurado, un miembro del jurado, un operador de competición, un árbitro central, cuatro jueces y dos verificadores de equipamiento. En la mesa deberán oficiar como mínimo un presidente del jurado un operador de computación, en caso de no poder disponer de cuatro jueces, se podrá puntuar con tres.",
+      "C. Las dos anteriores son válidas."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 27,
+    "question": "¿Cuál es el tiempo mínimo y máximo para un combate libre preestablecido?",
+    "options": [
+      "A. De 55 a 80 segundos.",
+      "B. De 60 a 75 segundos.",
+      "C. No importa siempre que sea superior a 60 segundos."
+    ],
+    "answer": 1
+  },
+  {
+    "id": 28,
+    "question": "¿Cuántas series acrobáticas se pueden realizar?",
+    "options": [
+      "A. Sin límite, siempre que sean correctas.",
+      "B. Cuatro, siempre que sean continuas.",
+      "C. Máximo de tres."
+    ],
+    "answer": 2
+  },
+  {
+    "id": 29,
+    "question": "Di 2 motivos por los que la puntuación sea 0: (Combate libre preestablecido)",
+    "options": [
+      "A. No bloquear una técnica con contacto (excepto la técnica final) y no respetar los máximos y mínimos del tiempo.",
+      "B. El tiempo y no realizar dos técnicas de pierna.",
+      "C. No ejecutar dos ataques consecutivos y una defensa."
+    ],
+    "answer": 0
+  }
+]

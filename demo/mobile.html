@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>¡Ataca al Jefe!</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            background-color: #121212;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .top-bar {
+            background-color: #1a1a1a;
+            padding: 15px;
+            text-align: center;
+            border-bottom: 2px solid #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 5;
+            position: relative;
+        }
+
+        .hp-container {
+            width: 100%;
+            height: 25px;
+            background: #444;
+            border-radius: 12.5px;
+            overflow: hidden;
+            position: relative;
+            margin-top: 5px;
+        }
+
+        .hp-bar {
+            height: 100%;
+            background: #4caf50;
+            width: 100%;
+            transition: width 0.3s;
+        }
+
+        .hp-text {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        .game-area {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: calc(100% - 80px);
+            padding: 20px;
+            box-sizing: border-box;
+            background: radial-gradient(circle, rgba(30,30,30,1) 0%, rgba(10,10,10,1) 100%);
+            transition: background-color 0.2s;
+        }
+
+        .term-box {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ff9800;
+            margin-bottom: 40px;
+            text-align: center;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .option-btn {
+            background: #2a2a2a;
+            color: #e0e0e0;
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            text-align: center;
+        }
+
+        .option-btn:active {
+            transform: scale(0.95);
+        }
+        .option-btn.correct { background: #4caf50; border-color: #2e7d32; color: #fff; }
+        .option-btn.wrong { background: #f44336; border-color: #c62828; color: #fff; }
+
+        /* End Screen Modal */
+        #endModal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .modal-content {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 15px;
+            width: 100%;
+            max-width: 350px;
+            text-align: center;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        .modal-title { font-size: 1.8rem; color: #ffca28; margin-top: 0; margin-bottom: 10px; }
+        .modal-desc { font-size: 1.1rem; color: #bbb; margin-bottom: 25px; line-height: 1.4; }
+
+        .input-field {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        .submit-btn {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 15px;
+            width: 100%;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .submit-btn:hover { background: #1565c0; }
+
+        .loading-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #121212;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #888;
+        }
+        
+        .hit-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 50; display: none;
+        }
+        .hit-red { background: rgba(255, 0, 0, 0.4); }
+        .hit-green { background: rgba(0, 255, 0, 0.4); }
+
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+    <div id="loading" class="loading-screen">Conectando...</div>
+    <div id="hitEffect" class="hit-overlay"></div>
+
+    <div class="top-bar">
+        <h3 style="margin: 0; font-size: 1rem; color: #aaa;">TU VIDA</h3>
+        <div class="hp-container">
+            <div class="hp-bar" id="hpBar"></div>
+            <div class="hp-text"><span id="hpText">100 / 100</span></div>
+        </div>
+    </div>
+
+    <div class="game-area" id="gameArea">
+        <div class="term-box" id="termText">Pregunta</div>
+        <div class="options-grid" id="optionsContainer">
+            <!-- Botones inyectados por JS -->
+        </div>
+    </div>
+
+    <!-- Modal inscripción -->
+    <div id="endModal">
+        <div class="modal-content" id="formContent" style="position: relative;">
+            <button id="closeModal" style="position: absolute; top: 10px; right: 15px; background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            <h2 class="modal-title" id="modalTitle">¡Terminó!</h2>
+            <p class="modal-desc">¿Te ha gustado? Regístrate aquí para saber cuándo estará la versión completa con combates multijugador y progresión RPG.</p>
+            <form id="waitlistForm">
+                <input type="text" id="nameInput" class="input-field" placeholder="Tu Nombre" required>
+                <input type="email" id="emailInput" class="input-field" placeholder="Tu Correo Electrónico" required>
+                <button type="submit" class="submit-btn" id="submitBtn">Notificarme el lanzamiento</button>
+            </form>
+        </div>
+        <div class="modal-content" id="successContent" style="display: none;">
+            <h2 class="modal-title" style="color: #4caf50;">¡Registrado!</h2>
+            <p class="modal-desc">¡Gracias por participar en la Incursión!<br>Te contactaremos pronto con novedades de Learning Dungeon.</p>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let myHp = 100;
+        let isDead = false;
+        let questionsStore = [];
+        let currentQuestion = null;
+        let isProcessing = false;
+
+        // Init
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Fetch vocabulary
+                const res = await fetch('/api/demo/questions');
+                const data = await res.json();
+                if(data.success && data.questions.length > 0) {
+                    questionsStore = data.questions;
+                } else {
+                    // Fallback local if DB has no questions for Demo
+                    questionsStore = [
+                        {term: "Ap Chagi", meaning: "Patada frontal"},
+                        {term: "Dollyo Chagi", meaning: "Patada circular"},
+                        {term: "Yop Chagi", meaning: "Patada lateral"},
+                        {term: "Makgi", meaning: "Bloqueo"},
+                        {term: "Sogi", meaning: "Posición"},
+                        {term: "Jirugi", meaning: "Puñetazo"},
+                        {term: "Charyot", meaning: "Atención"},
+                        {term: "Kyong Ye", meaning: "Saludo"}
+                    ];
+                }
+                
+                socket.emit('demo_player_join', {name: "Aliado " + Math.floor(Math.random()*1000)});
+                loadNextQuestion();
+                document.getElementById('loading').style.display = 'none';
+            } catch(e) {
+                alert("Error al cargar juego.");
+            }
+        });
+
+        // Socket Events
+        socket.on('demo_player_state', (state) => {
+            myHp = state.hp || 100;
+            updateHpUI();
+        });
+
+        socket.on('demo_boss_attack', (data) => {
+            if(isDead) return;
+            myHp = Math.max(0, myHp - data.damage);
+            updateHpUI();
+            flashScreen('red');
+            if(myHp <= 0) {
+                die("¡Has caído en combate!");
+            }
+        });
+
+        socket.on('demo_boss_dead', () => {
+            // Siempre mostramos el formulario al morir el boss, incluso si el jugador ya había muerto
+            // o cerrado el modal anteriormente.
+            document.getElementById('formContent').style.display = 'block';
+            document.getElementById('successContent').style.display = 'none';
+            die("¡JEFE DERROTADO!");
+        });
+
+        socket.on('demo_new_boss', () => {
+            isDead = false;
+            myHp = 100;
+            updateHpUI();
+            document.getElementById('endModal').style.display = 'none';
+            document.getElementById('successContent').style.display = 'none';
+            document.getElementById('formContent').style.display = 'block';
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('submitBtn').textContent = "Notificarme el lanzamiento";
+            document.getElementById('waitlistForm').reset();
+            loadNextQuestion();
+        });
+
+        // Gameplay
+        function loadNextQuestion() {
+            if(isDead || questionsStore.length < 4) return;
+            isProcessing = false;
+            
+            // Pick random target
+            const correctTarget = questionsStore[Math.floor(Math.random() * questionsStore.length)];
+            currentQuestion = correctTarget;
+
+            // Pick 3 random wrong options
+            let options = [correctTarget.meaning];
+            let attempts = 0;
+            while(options.length < 4 && attempts < 50) {
+                const randomWrong = questionsStore[Math.floor(Math.random() * questionsStore.length)].meaning;
+                if(!options.includes(randomWrong)) {
+                    options.push(randomWrong);
+                }
+                attempts++;
+            }
+
+            // Shuffle directly using simple sort random
+            options.sort(() => Math.random() - 0.5);
+
+            document.getElementById('termText').textContent = correctTarget.term;
+            
+            const container = document.getElementById('optionsContainer');
+            container.innerHTML = '';
+            
+            options.forEach(opt => {
+                const btn = document.createElement('div');
+                btn.className = 'option-btn';
+                btn.textContent = opt;
+                btn.onclick = () => handleAnswer(opt, btn);
+                container.appendChild(btn);
+            });
+        }
+
+        function handleAnswer(selectedText, btnElement) {
+            if(isProcessing || isDead) return;
+            isProcessing = true;
+
+            if(selectedText === currentQuestion.meaning) {
+                btnElement.classList.add('correct');
+                flashScreen('green');
+                // Calculate random damage between 200 and 500
+                const damage = Math.floor(Math.random() * 301) + 200;
+                socket.emit('demo_attack', damage);
+                
+                setTimeout(() => {
+                    loadNextQuestion();
+                }, 300); // Quick transition
+            } else {
+                btnElement.classList.add('wrong');
+                flashScreen('red');
+                // Penalization: Just wait 1 second to load next
+                setTimeout(() => {
+                    loadNextQuestion();
+                }, 1000);
+            }
+        }
+
+        function updateHpUI() {
+            const bar = document.getElementById('hpBar');
+            bar.style.width = myHp + '%';
+            document.getElementById('hpText').textContent = myHp + ' / 100';
+            
+            if(myHp < 30) {
+                bar.style.background = '#f44336';
+            } else if(myHp < 60) {
+                bar.style.background = '#ff9800';
+            }
+        }
+
+        function flashScreen(colorClass) {
+            const el = document.getElementById('hitEffect');
+            el.className = 'hit-overlay hit-' + colorClass;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 150);
+        }
+
+        function die(titleText) {
+            isDead = true;
+            document.getElementById('modalTitle').textContent = titleText;
+            document.getElementById('endModal').style.display = 'flex';
+        }
+
+        // Form submission & Close
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('endModal').style.display = 'none';
+            document.getElementById('termText').textContent = "Esperando al próximo combate...";
+            document.getElementById('optionsContainer').innerHTML = "<p style='text-align: center; color: #888;'>Prepárate...</p>";
+        });
+
+        document.getElementById('waitlistForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = "Enviando...";
+
+            const name = document.getElementById('nameInput').value;
+            const email = document.getElementById('emailInput').value;
+
+            try {
+                const response = await fetch('/api/demo/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email })
+                });
+
+                if(response.ok) {
+                    document.getElementById('formContent').style.display = 'none';
+                    document.getElementById('successContent').style.display = 'block';
+                } else {
+                    alert("Ocurrió un error. Inténtalo de nuevo.");
+                    btn.disabled = false;
+                    btn.textContent = "Notificarme el lanzamiento";
+                }
+            } catch(e) {
+                alert("Error de conexión.");
+                btn.disabled = false;
+                btn.textContent = "Notificarme el lanzamiento";
+            }
+        });
+
+    </script>
+</body>
+</html>
