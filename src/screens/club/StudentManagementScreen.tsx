@@ -13,14 +13,17 @@ import { BELT_CONFIGS } from '../../data/belts';
 import { ProgressionBadge } from '../../components/ProgressionBadge';
 import { PROGRESSION_SCALES } from '../../data/progressionScales';
 
-// ─── Group row sub-component ────────────────────────────────────────────────
+// ─── Subcomponente: fila de grupo dentro del modal de asignación ────────────
+// Pinta un grupo con su rango de edad y aforo, marcando si el alumno ya está inscrito o si el grupo es recomendado para su edad
 const GroupRow = ({ group, enrolled, recommended, onToggle, theme }: {
     group: any; enrolled: boolean; recommended: boolean;
     onToggle: (id: string) => void; theme: any;
 }) => {
+    // Construye la etiqueta de rango de edad solo si el grupo tiene definido un mínimo o máximo
     const ageLabel = (group.minAge != null || group.maxAge != null)
         ? `${group.minAge ?? '0'} – ${group.maxAge ?? '∞'} años`
         : null;
+    // Calculamos si el grupo está lleno comparando el número de inscritos con su aforo máximo (si tiene)
     const count = parseInt(group.studentCount) || 0;
     const max = group.maxStudents;
     const isFull = max != null && count >= max;
@@ -81,7 +84,7 @@ const GroupRow = ({ group, enrolled, recommended, onToggle, theme }: {
     );
 };
 
-// ─── Main screen ────────────────────────────────────────────────────────────
+// ─── Pantalla principal: gestión de alumnos del club ────────────────────────
 export const StudentManagementScreen = ({ route }: any) => {
     const navigation = useNavigation<any>();
     const { user } = route.params;
@@ -95,7 +98,7 @@ export const StudentManagementScreen = ({ route }: any) => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [students, setStudents] = useState<{ id: string; email: string; name: string; belt?: string; birthday?: string | null }[]>([]);
 
-    // Register new student mode
+    // Aqui controlamos el modo de alta de alumnos: buscar uno existente por email o crear una cuenta nueva desde cero
     const [addMode, setAddMode] = useState<'search' | 'create'>('search');
     const [createName, setCreateName] = useState('');
     const [createSurname, setCreateSurname] = useState('');
@@ -105,6 +108,7 @@ export const StudentManagementScreen = ({ route }: any) => {
     const [isCreating, setIsCreating] = useState(false);
     const [tempPasswordModal, setTempPasswordModal] = useState<{ name: string; email: string; password: string } | null>(null);
 
+    // Aqui guardamos los grupos del club y el estado del modal de asignación de grupos para el alumno seleccionado
     const [groups, setGroups] = useState<(Group & { activityName?: string })[]>([]);
     const [isGroupModalVisible, setIsGroupModalVisible] = useState(false);
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -112,13 +116,13 @@ export const StudentManagementScreen = ({ route }: any) => {
     const [studentGroups, setStudentGroups] = useState<Set<string>>(new Set());
     const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
 
-    // Password Reset State
+    // Aqui se gestiona el modal de restablecimiento de contraseña forzado por el club (admin)
     const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
     const [selectedStudentForPassword, setSelectedStudentForPassword] = useState<{ id: string, name: string } | null>(null);
     const [newPassword, setNewPassword] = useState('');
     const [isResettingPassword, setIsResettingPassword] = useState(false);
 
-    // Age helper
+    // Calcula la edad del alumno a partir de su fecha de nacimiento, ajustando si aún no ha llegado su cumpleaños este año
     const getStudentAge = (birthday: string | null): number | null => {
         if (!birthday) return null;
         const birth = new Date(birthday);
@@ -130,7 +134,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         return age;
     };
 
-    // Filter & Belts State
+    // Aqui guardamos el texto de búsqueda de la lista y todo el estado del modal de promoción de cinturón/nivel
     const [searchQuery, setSearchQuery] = useState('');
     const [isBeltModalVisible, setIsBeltModalVisible] = useState(false);
     const [selectedStudentForBelt, setSelectedStudentForBelt] = useState<{ id: string, name: string, currentBelt?: string } | null>(null);
@@ -139,6 +143,7 @@ export const StudentManagementScreen = ({ route }: any) => {
     const [selectedProgressionActivity, setSelectedProgressionActivity] = useState<ProgressionActivityOption | null>(null);
     const [isLoadingProgressionActivities, setIsLoadingProgressionActivities] = useState(false);
 
+    // Solo los propietarios de club con plan Pro/Elite pueden acceder a esta pantalla; si no, avisamos y volvemos atrás
     useEffect(() => {
         if (user.role !== 'club_owner' || (user.plan !== 'club_pro' && user.plan !== 'club_elite')) {
             Alert.alert(t('settings.limitReached'), t('settings.upgradeToPro'));
@@ -151,6 +156,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     }, [user]);
 
+    // Trae del backend la lista de alumnos del club
     const loadStudents = async () => {
         try {
             const data = await ClubService.getClubStudents(user.organizationId);
@@ -160,6 +166,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Trae del backend todos los grupos/actividades del club, usados luego en el modal de asignación
     const loadGroups = async () => {
         try {
             const data = await ClubService.getAllClubGroups(user.organizationId);
@@ -169,6 +176,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Añade al club un alumno que YA tiene cuenta en la app, buscándolo por email; mapea los distintos códigos de error a mensajes traducidos
     const handleAddStudent = async () => {
         if (!email.trim() || !user.organizationId) return;
 
@@ -199,6 +207,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Crea una cuenta nueva para un alumno sin cuenta previa; el backend genera una contraseña temporal que mostramos en un modal
     const handleCreateStudent = async () => {
         if (!createName.trim() || !createEmail.trim()) return;
         setIsCreating(true);
@@ -233,6 +242,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Pide confirmación antes de expulsar a un alumno del club; usa window.confirm en web y Alert nativo en móvil
     const handleRemoveStudent = (id: string, name: string) => {
         const title = t('settings.removeStudentTitle', { defaultValue: 'Remove Student?' });
         const message = t('settings.removeStudentBody', { defaultValue: 'Are you sure you want to remove {{name}} from your club?', name });
@@ -257,6 +267,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Ejecuta la expulsión real del alumno tras la confirmación, y lo retira de la lista local
     const performRemoval = async (id: string) => {
         try {
             if (!user.organizationId) return;
@@ -271,6 +282,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de asignación de grupos: carga los grupos en los que ya está inscrito el alumno y arranca con las secciones colapsadas
     const openGroupModal = async (studentId: string, birthday?: string | null) => {
         setSelectedStudentId(studentId);
         setSelectedStudentBirthday(birthday || null);
@@ -280,11 +292,12 @@ export const StudentManagementScreen = ({ route }: any) => {
         } catch (error) {
             console.error("Failed to load student groups", error);
         }
-        // Start with all sections collapsed
+        // Empezamos con todas las secciones de actividad colapsadas para no saturar la vista
         setExpandedActivities(new Set());
         setIsGroupModalVisible(true);
     };
 
+    // Inscribe o desinscribe al alumno de un grupo concreto, actualizando el set local de grupos según el resultado
     const handleToggleGroup = async (groupId: string) => {
         if (!selectedStudentId) return;
         try {
@@ -309,12 +322,14 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de restablecimiento de contraseña para el alumno indicado, limpiando el campo de nueva contraseña
     const openPasswordModal = (id: string, name: string) => {
         setSelectedStudentForPassword({ id, name });
         setNewPassword('');
         setIsPasswordModalVisible(true);
     };
 
+    // Fuerza una nueva contraseña temporal para el alumno mediante la ruta admin del backend (mínimo 6 caracteres)
     const handleResetPassword = async () => {
         if (!selectedStudentForPassword || newPassword.length < 6) {
             Alert.alert(t('common.error', { defaultValue: 'Error' }), 'Password must be at least 6 characters long.');
@@ -323,7 +338,7 @@ export const StudentManagementScreen = ({ route }: any) => {
 
         setIsResettingPassword(true);
         try {
-            // Note: Normally we'd put this in AuthService, but for brevity we'll fetch natively here since it's an isolated Admin route
+            // Nota: normalmente esto iría en AuthService, pero al ser una ruta admin aislada lo llamamos directo aquí
             const response = await apiFetch(`/api/users/${selectedStudentForPassword.id}/password/admin`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -344,6 +359,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Dispara manualmente la sincronización con HubSpot en segundo plano (botón de sincronización del header)
     const handleForceSync = async () => {
         setIsSyncing(true);
         try {
@@ -364,6 +380,8 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de promoción: a partir de los grupos del alumno, deduce en qué actividades con sistema de progresión está inscrito
+    // (descartando duplicados por actividad) y, si solo hay una, la selecciona automáticamente
     const openBeltModal = async (id: string, name: string, currentBelt?: string) => {
         setSelectedStudentForBelt({ id, name, currentBelt });
         setSelectedProgressionActivity(null);
@@ -372,6 +390,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         setIsBeltModalVisible(true);
         try {
             const groupsAssociated = await ClubService.getStudentGroups(id);
+            // Agrupamos los grupos del alumno por actividad, quedándonos solo con las que tienen un tipo de progresión soportado
             const byActivity = new Map<string, ProgressionActivityOption>();
             groupsAssociated.forEach(g => {
                 if (!g.activityType || !PROGRESSION_ACTIVITY_TYPES.includes(g.activityType)) return;
@@ -395,6 +414,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Asigna al alumno un nuevo nivel/cinturón en la actividad de progresión seleccionada y refresca su cinturón visible si es Taekwondo ITF
     const handleAssignBelt = async (levelOrder: number, levelName: string) => {
         if (!selectedStudentForBelt || !selectedProgressionActivity || !user.id) return;
         setIsUpdatingBelt(true);
@@ -412,6 +432,7 @@ export const StudentManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Filtra la lista de alumnos por nombre o email usando una versión "debounced" del texto de búsqueda para no recalcular en cada pulsación
     const debouncedSearch = useDebounce(searchQuery, 250);
     const filteredStudents = useMemo(
         () => students.filter(s =>
@@ -436,7 +457,7 @@ export const StudentManagementScreen = ({ route }: any) => {
             <ScrollView contentContainerStyle={styles.content}>
 
                 <View style={styles.addSection}>
-                    {/* Mode toggle */}
+                    {/* Selector entre buscar un alumno existente por email o registrar uno nuevo desde cero */}
                     <View style={styles.modeToggle}>
                         <TouchableOpacity
                             style={[styles.modeTab, addMode === 'search' && styles.modeTabActive]}
@@ -454,6 +475,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                         </TouchableOpacity>
                     </View>
 
+                    {/* Modo "buscar": añadir por email a un alumno que ya tiene cuenta vs modo "crear": dar de alta una cuenta nueva */}
                     {addMode === 'search' ? (
                         <>
                             <Text style={styles.sectionSubtitle}>
@@ -545,6 +567,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                                     </View>
                                 </View>
                                 <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    {/* El botón de promoción de cinturón/nivel solo está disponible para propietarios e instructores */}
                                     {(user.role === 'club_owner' || user.role === 'instructor') && (
                                         <TouchableOpacity style={[styles.assignButton, { backgroundColor: theme.colors.secondary }]} onPress={() => openBeltModal(student.id, student.name, student.belt)}>
                                             <Ionicons name="star" size={20} color="white" />
@@ -566,7 +589,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                 </View>
             </ScrollView>
 
-            {/* Temp password modal after creating new student */}
+            {/* Modal con la contraseña temporal generada al registrar un alumno nuevo, para compartirla con él */}
             <Modal visible={!!tempPasswordModal} transparent animationType="fade" onRequestClose={() => setTempPasswordModal(null)}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { gap: 12 }]}>
@@ -608,7 +631,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Group Assignment Modal — grouped by activity */}
+            {/* Modal de asignación de grupos, organizado por actividad con secciones plegables */}
             <Modal visible={isGroupModalVisible} transparent animationType="fade" onRequestClose={() => setIsGroupModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -618,7 +641,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                             <Text style={styles.modalTitle}>{t('settings.assignGroup', { defaultValue: 'Asignar a Grupo' })}</Text>
                         </View>
 
-                        {/* Age badge */}
+                        {/* Insignia con la edad calculada del alumno; no se muestra si no tiene fecha de nacimiento registrada */}
                         {(() => {
                             const age = getStudentAge(selectedStudentBirthday);
                             if (age === null) return null;
@@ -640,7 +663,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                         ) : (
                             <ScrollView style={{ width: '100%', maxHeight: 440 }} showsVerticalScrollIndicator>
                                 {(() => {
-                                    // Build activity map preserving order
+                                    // Agrupamos los grupos del club por actividad (manteniendo el orden de aparición) para pintar una sección por actividad
                                     const activityMap: Map<string, { name: string; icon: string; groups: typeof groups }> = new Map();
                                     groups.forEach(g => {
                                         const key = g.activityId || 'sin-actividad';
@@ -654,11 +677,11 @@ export const StudentManagementScreen = ({ route }: any) => {
                                     return Array.from(activityMap.entries()).map(([activityId, { name: activityName, icon: activityIcon, groups: activityGroups }]) => {
                                         const isExpanded = expandedActivities.has(activityId);
 
-                                        // Split into recommended vs others
-                                        // Only groups with an EXPLICIT age range that the student fits are "recommended"
+                                        // Separamos los grupos "recomendados" (con un rango de edad explícito que encaja con la edad del alumno) del resto;
+                                        // los grupos sin rango de edad configurado nunca se consideran recomendados
                                         const recommended = studentAge !== null
                                             ? activityGroups.filter(g => {
-                                                if (g.minAge == null && g.maxAge == null) return false; // no range = not recommended
+                                                if (g.minAge == null && g.maxAge == null) return false; // sin rango = no recomendado
                                                 const minOk = g.minAge == null || studentAge >= (g.minAge as number);
                                                 const maxOk = g.maxAge == null || studentAge <= (g.maxAge as number);
                                                 return minOk && maxOk;
@@ -666,11 +689,12 @@ export const StudentManagementScreen = ({ route }: any) => {
                                             : [];
                                         const others = activityGroups.filter(g => !recommended.includes(g));
 
+                                        // Contamos en cuántos grupos de esta actividad ya está inscrito el alumno, para mostrarlo en la cabecera
                                         const enrolledCount = activityGroups.filter(g => studentGroups.has(g.id)).length;
 
                                         return (
                                             <View key={activityId} style={{ marginBottom: 8 }}>
-                                                {/* Activity header — tap to expand/collapse */}
+                                                {/* Cabecera de la actividad: al pulsarla se expande o colapsa la sección de grupos */}
                                                 <TouchableOpacity
                                                     onPress={() => setExpandedActivities(prev => {
                                                         const next = new Set(prev);
@@ -694,7 +718,7 @@ export const StudentManagementScreen = ({ route }: any) => {
 
                                                 {isExpanded && (
                                                     <View style={{ marginTop: 2 }}>
-                                                        {/* Recommended group(s) */}
+                                                        {/* Grupo(s) recomendados según la edad del alumno, destacados con una etiqueta dorada */}
                                                         {recommended.length > 0 && (
                                                             <View style={styles.recommendedSection}>
                                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 5 }}>
@@ -709,7 +733,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                                                             </View>
                                                         )}
 
-                                                        {/* Other groups */}
+                                                        {/* Resto de grupos de la actividad que no encajan en el rango de edad recomendado */}
                                                         {others.length > 0 && (
                                                             <View>
                                                                 {recommended.length > 0 && (
@@ -723,7 +747,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                                                             </View>
                                                         )}
 
-                                                        {/* No age range configured */}
+                                                        {/* Aviso cuando ninguno de los grupos de la actividad tiene rango de edad configurado */}
                                                         {recommended.length === 0 && studentAge !== null && activityGroups.every(g => g.minAge == null && g.maxAge == null) && (
                                                             <Text style={{ color: theme.colors.textSecondary, fontSize: 11, fontStyle: 'italic', marginLeft: 4, marginBottom: 4 }}>
                                                                 Sin rango de edad configurado en estos grupos
@@ -745,7 +769,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Password Reset Modal */}
+            {/* Modal para forzar una contraseña temporal nueva al alumno */}
             <Modal visible={isPasswordModalVisible} transparent animationType="fade" onRequestClose={() => setIsPasswordModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -776,12 +800,13 @@ export const StudentManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Progression Promotion Modal */}
+            {/* Modal de promoción de cinturón/nivel: cambia su contenido según cuántas actividades de progresión tenga el alumno y de qué tipo sean */}
             <Modal visible={isBeltModalVisible} transparent animationType="fade" onRequestClose={() => setIsBeltModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Promover Alumno</Text>
 
+                        {/* Mientras carga: indicador. Sin actividades de progresión: aviso. Varias: selector de actividad. Una sola: pasamos directo a elegir nivel */}
                         {isLoadingProgressionActivities ? (
                             <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 24 }} />
                         ) : progressionActivityOptions.length === 0 ? (
@@ -811,6 +836,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                                 />
                             </>
                         ) : selectedProgressionActivity.activityType === 'taekwondo_itf' ? (
+                            // Para Taekwondo ITF usamos la lista de cinturones (BELT_CONFIGS), filtrando por el rango del usuario que promociona
                             <>
                                 {selectedProgressionActivity.currentLevelName && (
                                     <View style={{ position: 'absolute', top: 16, right: 16 }}>
@@ -838,6 +864,7 @@ export const StudentManagementScreen = ({ route }: any) => {
                                 />
                             </>
                         ) : (
+                            // Para el resto de actividades usamos la escala de progresión genérica definida en PROGRESSION_SCALES según su tipo
                             <>
                                 {selectedProgressionActivity.currentLevelName && (
                                     <View style={{ position: 'absolute', top: 16, right: 16 }}>

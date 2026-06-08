@@ -1,5 +1,15 @@
 import { Tul } from '../types';
 
+// Catálogo completo de Tuls (patrones/formas) de Taekwondo ITF, ordenado de menor a mayor exigencia.
+// Cada entrada sigue la misma estructura:
+//  - id/name: identificador interno y nombre del Tul
+//  - rankRequirement/beltName: nivel de cinturón mínimo requerido y su nombre para mostrar
+//  - meaning/beltMeaning/description/diagramDetails: textos traducidos a los 6 idiomas soportados (es, en, fr, de, it, pt)
+//    que explican el significado del Tul, el significado del cinturón, un resumen (nº de movimientos y diagrama)
+//    y detalles de cómo se ejecuta el diagrama
+//  - moves: número total de movimientos del patrón
+//  - diagramType: forma geométrica del diagrama que traza el Tul (usado por TulDiagram para dibujarlo)
+//  - videoId: id del vídeo de YouTube de referencia para visualizar la ejecución
 export const TULS_DATA: Tul[] = [
     {
         id: 'saju-jirugi',
@@ -86,7 +96,7 @@ export const TULS_DATA: Tul[] = [
     {
         id: 'chon-ji',
         name: 'Chon-Ji',
-        rankRequirement: 1, // Learned at 9th Gup
+        rankRequirement: 1, // Se aprende en 9º Gup
         beltName: 'Puntas Amarillas (9º Gup)',
         meaning: {
             es: 'Significa literalmente "el Cielo y la Tierra". Es, en Oriente, la interpretación de la creación del mundo y el principio de la historia de la Humanidad, por tal motivo es el primer Tul que aprende el principiante. El Tul tiene dos partes: una representa el Cielo y la otra la Tierra.',
@@ -114,7 +124,7 @@ export const TULS_DATA: Tul[] = [
             pt: 'Forma de Cruz (+), começando de C em direção a D.'
         },
         diagramType: 'plus',
-        videoId: 'wbf2m-S0A4U', // Placeholder ID
+        videoId: 'wbf2m-S0A4U', // ID provisional
     },
     {
         id: 'dan-gun',
@@ -305,7 +315,7 @@ export const TULS_DATA: Tul[] = [
         diagramType: 'I',
         videoId: 'ZasS9RifxQw',
     },
-    // Add more as needed
+    // Añadir más Tuls según se necesiten, siguiendo la misma estructura
     {
         id: 'toi-gye',
         name: 'Toi-Gye',

@@ -1,14 +1,17 @@
 
-// Types for Subscription
+// Forma de un plan de suscripción para clubes: id interno, textos a mostrar, precio formateado para UI
+// y lista de features (cada string es una línea de la lista de ventajas mostrada al usuario)
 export interface Plan {
     id: string;
     title: string;
     description: string;
-    price: string; // Display price e.g. "9.99€/mes"
+    price: string; // Precio ya formateado para mostrar, ej. "9.99€/mes"
     features: string[];
     recommended?: boolean;
 }
 
+// Catálogo estático de planes disponibles (Lite/Pro/Elite). Aqui podemos configurar número de actividades,
+// grupos, instructores y alumnos permitidos por cada plan, así como el precio mostrado
 export const PLANS: Plan[] = [
     {
         id: 'club_lite',
@@ -60,8 +63,8 @@ export const PLANS: Plan[] = [
 
 export const SubscriptionService = {
 
+    // Devuelve el catálogo de planes; simula una llamada de red con un retraso de 500ms (no llama a un endpoint real)
     getPlans: async (): Promise<Plan[]> => {
-        // Simulate API delay
         return new Promise((resolve) => {
             setTimeout(() => {
                 resolve(PLANS);
@@ -69,11 +72,12 @@ export const SubscriptionService = {
         });
     },
 
+    // Simula el proceso de compra in-app (IAP): busca el plan por id y resuelve éxito/fallo tras 1.5s.
+    // No realiza ninguna petición real al backend ni a las tiendas (placeholder a falta de integración real)
     purchasePlan: async (planId: string): Promise<{ success: boolean; message?: string }> => {
-        // Simulate IAP process
         return new Promise((resolve) => {
             setTimeout(() => {
-                // Handle success/failure
+                // Comprobamos si el plan existe para decidir éxito o error
                 const plan = PLANS.find(p => p.id === planId);
                 if (plan) {
                     resolve({ success: true });
@@ -84,10 +88,11 @@ export const SubscriptionService = {
         });
     },
 
+    // Simula la restauración de compras previas (siempre devuelve true tras 1s); placeholder pendiente de IAP real
     restorePurchases: async (): Promise<boolean> => {
         return new Promise((resolve) => {
             setTimeout(() => {
-                resolve(true); // Simulate restoring previous purchases
+                resolve(true);
             }, 1000);
         });
     }

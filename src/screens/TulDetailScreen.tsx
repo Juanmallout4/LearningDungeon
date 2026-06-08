@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { Tul } from '../types';
-import { theme as defaultTheme } from '../theme'; // keep for BeltDisplay if needed
+import { theme as defaultTheme } from '../theme'; // se mantiene por si BeltDisplay necesita el tema por defecto como fallback
 import { useTheme, AppTheme } from '../theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { TulDiagram } from '../components/TulDiagram';
@@ -16,8 +16,10 @@ type ParamList = {
 };
 
 export const TulDetailScreen = ({ route }: any) => {
+    // El Tul puede llegar completo por parametros (navegacion interna) o solo como id (p.ej. enlaces externos/deeplinks)
     const paramTul = route.params?.tul;
     const paramId = route.params?.id;
+    // Si no viene el objeto Tul, lo buscamos en los datos locales por id o por nombre (sin distinguir mayusculas)
     const tul = paramTul || (paramId ? TULS_DATA.find(t => t.id === paramId || t.name.toLowerCase() === paramId.toLowerCase()) : null);
 
     const navigation = useNavigation();
@@ -26,6 +28,7 @@ export const TulDetailScreen = ({ route }: any) => {
     const { width } = useWindowDimensions();
     const styles = createStyles(theme);
 
+    // Pantalla de respaldo si el id/objeto recibido no corresponde a ningun Tul conocido
     if (!tul) {
         return (
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -37,20 +40,22 @@ export const TulDetailScreen = ({ route }: any) => {
         );
     }
 
+    // Calculamos el tamaño del reproductor manteniendo proporcion 16:9, limitando el ancho a 800px (vista web/tablet)
     const videoWidth = Math.min(width, 800) - 32;
     const videoHeight = videoWidth * (9 / 16);
 
-    // Helper to get translated string or fallback to Spanish/English
+    // Los textos del Tul pueden venir como string simple o como mapa de traducciones { es, en, ... }
     const getTranslatedProperty = (property: Record<string, string> | string) => {
         if (typeof property === 'string') return property;
         if (!property) return '';
-        const langCode = i18n.language.split('-')[0]; // Ensure we just use 'en', 'es', etc.
+        // Normalizamos el codigo de idioma (de 'es-ES' nos quedamos con 'es') y aplicamos cascada de fallback
+        const langCode = i18n.language.split('-')[0];
         return property[langCode] || property['es'] || property['en'] || '';
     };
 
     return (
         <ScrollView style={styles.container}>
-            {/* Header with Image Background or Gradient */}
+            {/* Cabecera con el nombre del Tul y el cinturon requerido */}
             <View style={styles.header}>
                 <View style={{ flex: 1, paddingRight: theme.spacing.s, justifyContent: 'center' }}>
                     <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>{tul.name}</Text>
@@ -62,7 +67,7 @@ export const TulDetailScreen = ({ route }: any) => {
 
             <View style={styles.content}>
 
-                {/* Video Section */}
+                {/* Video tutorial de YouTube embebido (no se reproduce automaticamente) */}
                 <View style={styles.videoCard}>
                     <Text style={styles.sectionTitle}>{t('tulDetail.videoGuide')}</Text>
                     <YoutubePlayer
@@ -72,7 +77,7 @@ export const TulDetailScreen = ({ route }: any) => {
                     />
                 </View>
 
-                {/* Belt Meaning Section (Conditional) */}
+                {/* Solo se muestra si el Tul tiene definido un significado de cinturon */}
                 {tul.beltMeaning && (
                     <View style={styles.card}>
                         <View style={styles.cardHeader}>
@@ -83,7 +88,7 @@ export const TulDetailScreen = ({ route }: any) => {
                     </View>
                 )}
 
-                {/* Meaning Section */}
+                {/* Significado general del Tul (origen historico, simbolismo, etc.) */}
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <Ionicons name="book" size={20} color={theme.colors.primary} />
@@ -92,7 +97,7 @@ export const TulDetailScreen = ({ route }: any) => {
                     <Text style={styles.cardText}>{getTranslatedProperty(tul.meaning)}</Text>
                 </View>
 
-                {/* Diagram Section */}
+                {/* Diagrama del recorrido del Tul; si no hay detalle especifico, usamos la descripcion general como texto */}
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <Ionicons name="map" size={20} color={theme.colors.primary} />
@@ -106,7 +111,7 @@ export const TulDetailScreen = ({ route }: any) => {
                     </View>
                 </View>
 
-                {/* Movements Info (Placeholder for now) */}
+                {/* Listado detallado de movimientos pendiente de implementar; de momento solo mostramos el conteo */}
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <Ionicons name="list" size={20} color={theme.colors.primary} />

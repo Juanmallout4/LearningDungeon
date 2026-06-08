@@ -15,6 +15,7 @@ export const BossManagementScreen = ({ route }: any) => {
     const [bosses, setBosses] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Estado del formulario de creacion/edicion: cada campo del jefe tiene su propio useState
     const [editingId, setEditingId] = useState<string | null>(null);
     const [bossName, setBossName] = useState('');
     const [bossHp, setBossHp] = useState('1000');
@@ -26,16 +27,18 @@ export const BossManagementScreen = ({ route }: any) => {
     const [maxInterval, setMaxInterval] = useState('10');
     const [category, setCategory] = useState('monster');
     const [expReward, setExpReward] = useState('50');
-    const [lootTable, setLootTable] = useState<any[]>([]); // [{itemId, name, chance, quantity}]
-    
+    const [lootTable, setLootTable] = useState<any[]>([]); // Lista de objetos {itemId, name, chance, quantity} que define el botin que suelta el jefe
+
     const [isCreating, setIsCreating] = useState(false);
     const [showLootModal, setShowLootModal] = useState(false);
     const [availableMarketItems, setAvailableMarketItems] = useState<any[]>([]);
 
+    // Al montar (o si cambia el club objetivo) cargamos la lista de jefes desde el backend
     useEffect(() => {
         if (targetClubId) fetchBosses();
     }, [targetClubId]);
 
+    // Aqui pedimos al backend los jefes del club y los guardamos en el estado para pintarlos en la lista
     const fetchBosses = async () => {
         setIsLoading(true);
         try {
@@ -49,6 +52,7 @@ export const BossManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Rellena el formulario con los datos del jefe seleccionado para poder editarlo (incluye conversion de ms a segundos en los intervalos)
     const handleEdit = (item: any) => {
         setEditingId(item.id);
         setBossName(item.name);
@@ -64,35 +68,40 @@ export const BossManagementScreen = ({ route }: any) => {
         setLootTable(item.lootTable || []);
     };
 
+    // Trae los items del mercado del club y nos quedamos solo con los 'material', que son los unicos que se pueden poner como botin
     const fetchMarketItems = async () => {
         try {
             const res = await apiFetch(`/api/clubs/${targetClubId}/market?isAdmin=true`);
             const data = await res.json();
             if (data.items) {
-                // Only materials for loot
                 setAvailableMarketItems(data.items.filter((i: any) => i.itemType === 'material'));
             }
         } catch (e) { console.error(e); }
     };
 
+    // Abre/cierra el modal de botin; al abrirlo refresca la lista de materiales disponibles
     const toggleLootModal = () => {
         if (!showLootModal) fetchMarketItems();
         setShowLootModal(!showLootModal);
     };
 
+    // Añade un material a la tabla de botin con valores por defecto (probabilidad 1 y cantidad 1), evitando duplicados
     const addItemToLoot = (item: any) => {
         if (lootTable.find(l => l.itemId === item.id)) return;
         setLootTable([...lootTable, { itemId: item.id, name: item.name, chance: 1, quantity: 1 }]);
     };
-    
+
+    // Actualiza un campo concreto (cantidad o probabilidad) de un item ya añadido al botin
     const updateLootItem = (itemId: string, field: string, value: any) => {
         setLootTable(prev => prev.map(l => l.itemId === itemId ? { ...l, [field]: value } : l));
     };
 
+    // Quita un item de la tabla de botin filtrando por su id
     const removeLootItem = (itemId: string) => {
         setLootTable(prev => prev.filter(l => l.itemId !== itemId));
     };
 
+    // Valida campos minimos, arma el payload del jefe y hace POST (nuevo) o PUT (edicion) segun editingId
     const handleCreateOrUpdate = async () => {
         if (!bossName || !bossHp) {
             Alert.alert('Error', 'Nombre y Vida son obligatorios');
@@ -101,6 +110,7 @@ export const BossManagementScreen = ({ route }: any) => {
 
         setIsCreating(true);
         try {
+            // Convertimos los inputs de texto a numeros y pasamos los intervalos de segundos a milisegundos para el backend
             const payload = {
                 name: bossName,
                 totalHp: parseInt(bossHp, 10),
@@ -116,7 +126,8 @@ export const BossManagementScreen = ({ route }: any) => {
                 isActive: editingId ? bosses.find(b => b.id === editingId)?.isActive : true
             };
 
-            const url = editingId 
+            // Si hay editingId apuntamos al endpoint del jefe concreto con PUT, si no creamos uno nuevo con POST
+            const url = editingId
                 ? `/api/clubs/${targetClubId}/bosses/${editingId}`
                 : `/api/clubs/${targetClubId}/bosses`;
             const method = editingId ? 'PUT' : 'POST';
@@ -127,6 +138,7 @@ export const BossManagementScreen = ({ route }: any) => {
                 body: JSON.stringify(payload)
             });
 
+            // Si la operacion fue bien limpiamos el formulario a sus valores por defecto y recargamos la lista
             if (res.ok) {
                 setEditingId(null);
                 setBossName('');
@@ -151,6 +163,7 @@ export const BossManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Borra un jefe; en web usamos window.confirm porque Alert.alert no muestra dialogo nativo en ese entorno
     const handleDeleteBoss = async (bossId: string) => {
         const confirmStr = '¿Estás seguro de eliminar este jefe de la historia del club?';
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -176,9 +189,11 @@ export const BossManagementScreen = ({ route }: any) => {
                 <Text style={styles.headerTitle}>Gestión de Jefes</Text>
             </View>
 
+            {/* La lista de jefes lleva el formulario de creacion/edicion como cabecera para que todo viva en un mismo scroll */}
             <FlatList
                 ListHeaderComponent={
                     <View style={styles.formContainer}>
+                        {/* El titulo y el texto del boton cambian segun si estamos editando (editingId) o creando uno nuevo */}
                         <Text style={styles.formTitle}>{editingId ? 'Editar Jefe' : 'Invocar Nuevo Jefe'}</Text>
                         <Text style={styles.formDesc}>Define las estadísticas del jefe. Recuerda que los Mini-Jefes y Jefes Únicos tienen límites de aparición semanal.</Text>
                         
@@ -201,6 +216,7 @@ export const BossManagementScreen = ({ route }: any) => {
                             <TextInput style={[styles.input, { flex: 1 }]} placeholder="Pts Recompensa" placeholderTextColor={theme.colors.textSecondary} keyboardType="numeric" value={bossReward} onChangeText={setBossReward} />
                         </View>
 
+                        {/* Selector de categoria: pintamos un boton por cada categoria fija y resaltamos la seleccionada comparando con el estado */}
                         <Text style={[styles.label, { marginTop: 0 }]}>Categoría del Enemigo</Text>
                         <View style={styles.categoryContainer}>
                             {['monster', 'creature', 'miniboss', 'unique'].map(cat => (
@@ -238,6 +254,7 @@ export const BossManagementScreen = ({ route }: any) => {
                 data={bosses}
                 keyExtractor={item => item.id}
                 contentContainerStyle={styles.listContent}
+                // Cada tarjeta resalta su borde si item.isActive (es el jefe semanal en curso) y muestra una insignia con su categoria
                 renderItem={({ item }) => (
                     <View style={[styles.bossCard, item.isActive && styles.bossCardActive]}>
                         <Image source={{ uri: item.imageUrl || 'https://via.placeholder.com/100' }} style={styles.bossAvatar} />
@@ -262,7 +279,7 @@ export const BossManagementScreen = ({ route }: any) => {
                 ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>No hay jefes registrados.</Text> : null}
             />
 
-            {/* LOOT TABLE MODAL */}
+            {/* Modal de configuracion de botin: lista lo ya añadido (con inputs de cantidad/probabilidad) y debajo los materiales disponibles para añadir */}
             <Modal visible={showLootModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -306,6 +323,7 @@ export const BossManagementScreen = ({ route }: any) => {
                                 </View>
                             ))}
 
+                            {/* Solo mostramos los materiales que aun no estan en la tabla de botin, para no duplicar entradas */}
                             <Text style={[styles.modalSectionTitle, { marginTop: 20 }]}>Añadir Materiales</Text>
                             {availableMarketItems.filter(m => !lootTable.find(l => l.itemId === m.id)).map(m => (
                                 <TouchableOpacity key={m.id} style={styles.addItemRow} onPress={() => addItemToLoot(m)}>

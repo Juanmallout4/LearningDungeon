@@ -1,10 +1,12 @@
+// Paleta de colores para el modo claro. Aqui podemos configurar los colores base de la app (fondo, superficies,
+// marca, texto y estados success/error/warning) que consume ThemeContext según el modo activo
 export const lightColors = {
     background: '#F5F5F5',
     surface: '#FFFFFF',
     surfaceHighlight: '#E9E9E9',
-    primary: '#21b668',   // AIM Education Green
-    secondary: '#0057B7', // Blue (ITF)
-    accent: '#CE1126',    // Red (ITF)
+    primary: '#21b668',   // Verde de AIM Education
+    secondary: '#0057B7', // Azul (ITF)
+    accent: '#CE1126',    // Rojo (ITF)
     text: '#121212',
     textSecondary: '#666666',
     border: '#E0E0E0',
@@ -13,13 +15,14 @@ export const lightColors = {
     warning: '#FF9800',
 };
 
+// Paleta equivalente para el modo oscuro (mismos colores de marca, fondos/textos invertidos)
 export const darkColors = {
     background: '#121212',
     surface: '#1E1E1E',
     surfaceHighlight: '#2A2A2A',
-    primary: '#21b668',   // AIM Education Green
-    secondary: '#0057B7', // Blue (ITF)
-    accent: '#CE1126',    // Red (ITF)
+    primary: '#21b668',   // Verde de AIM Education
+    secondary: '#0057B7', // Azul (ITF)
+    accent: '#CE1126',    // Rojo (ITF)
     text: '#FFFFFF',
     textSecondary: '#AAAAAA',
     border: '#333333',
@@ -28,6 +31,7 @@ export const darkColors = {
     warning: '#FF9800',
 };
 
+// Aqui podemos configurar los tamaños y pesos de fuente reutilizados en toda la app (títulos, subtítulos, cuerpo, pies)
 export const typography = {
     header: {
         fontSize: 28,
@@ -45,6 +49,7 @@ export const typography = {
     }
 };
 
+// Escala de espaciados estándar (en puntos) usada para márgenes y paddings consistentes en toda la UI
 export const spacing = {
     xs: 4,
     s: 8,
@@ -53,6 +58,7 @@ export const spacing = {
     xl: 32,
 };
 
+// Escala de radios de borde estándar para mantener coherencia visual en tarjetas, botones, modales, etc.
 export const borderRadius = {
     s: 4,
     m: 8,
@@ -60,8 +66,8 @@ export const borderRadius = {
     xl: 24,
 };
 
-// Export a default static theme for backward compatibility during the transition,
-// or for files that haven't been migrated to the hook yet.
+// Tema estático por defecto (modo oscuro) que se exporta para mantener compatibilidad con código que aún
+// no migró al hook useTheme/ThemeContext, o para usarlo fuera del árbol de componentes con contexto
 export const theme = {
     colors: darkColors,
     typography,

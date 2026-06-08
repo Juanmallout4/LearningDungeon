@@ -4,9 +4,12 @@ import { apiFetch, saveToken, removeToken, getToken } from '../utils/apiFetch';
 
 export { getToken };
 
+// Clave bajo la que se guarda el perfil de usuario en AsyncStorage (cache local de sesión)
 const USER_STORAGE_KEY = '@Learning Dungeon_user';
 
 export const AuthService = {
+    // POST /api/login: envía email/contraseña, recibe { user, token }.
+    // Guarda el usuario en AsyncStorage y persiste el token de sesión vía saveToken.
     login: async (email: string, password: string): Promise<UserProfile> => {
         try {
             const response = await fetch('/api/login', {
@@ -31,6 +34,7 @@ export const AuthService = {
         }
     },
 
+    // Recupera el último usuario guardado localmente (sin llamar al servidor); útil para arrancar la app sin esperar a la red
     getSavedUser: async (): Promise<UserProfile | null> => {
         try {
             const userStr = await AsyncStorage.getItem(USER_STORAGE_KEY);
@@ -43,6 +47,7 @@ export const AuthService = {
         return null;
     },
 
+    // PUT /api/users/:userId/username con { username }, devuelve { username } actualizado tras validarlo en servidor
     updateUsername: async (userId: string, newUsername: string): Promise<string> => {
         try {
             const response = await apiFetch(`/api/users/${userId}/username`, {
@@ -64,6 +69,7 @@ export const AuthService = {
         }
     },
 
+    // PUT /api/users/:userId/belt con { beltLevel, beltName }; devuelve true si el servidor confirma el cambio de cinturón
     updateBelt: async (userId: string, beltLevel: number, beltName: string): Promise<boolean> => {
         try {
             const response = await apiFetch(`/api/users/${userId}/belt`, {
@@ -84,6 +90,7 @@ export const AuthService = {
         }
     },
 
+    // PUT /api/users/:userId/profile-picture; envía la imagen como base64 y recibe la URL/ruta final guardada en { profilePicture }
     updateProfilePicture: async (userId: string, base64Image: string): Promise<string> => {
         try {
             const response = await apiFetch(`/api/users/${userId}/profile-picture`, {
@@ -105,6 +112,7 @@ export const AuthService = {
         }
     },
 
+    // Cierra sesión localmente: borra el usuario cacheado y el token (no llama al backend)
     logout: async () => {
         await AsyncStorage.removeItem(USER_STORAGE_KEY);
         await removeToken();

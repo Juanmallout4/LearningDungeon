@@ -21,22 +21,24 @@ export const ChestManagementScreen = ({ route }: any) => {
     const [editingChestId, setEditingChestId] = useState<string | null>(null);
     const [selectedChest, setSelectedChest] = useState<any | null>(null);
 
-    // Form states
+    // Campos del formulario de creacion/edicion de cofre (nombre, descripcion e imagen)
     const [chestName, setChestName] = useState('');
     const [chestDesc, setChestDesc] = useState('');
     const [chestImg, setChestImg] = useState('');
 
-    // Pool states
+    // Estado del pool de recompensas: que items puede dar el cofre y con que peso/probabilidad
     const [poolItems, setPoolItems] = useState<any[]>([]);
     const [marketItems, setMarketItems] = useState<MarketItem[]>([]);
     const [isAddingPoolItem, setIsAddingPoolItem] = useState(false);
     const [selectedPoolItem, setSelectedPoolItem] = useState<string | null>(null);
     const [poolWeight, setPoolWeight] = useState('1');
 
+    // Carga inicial: en cuanto monta la pantalla pedimos los cofres del club
     useEffect(() => {
         loadChests();
     }, []);
 
+    // Pide a ClubService los cofres del club activo y los guarda en el estado para la lista
     const loadChests = async () => {
         setIsLoading(true);
         const clubId = route.params?.clubId || user?.organizationId;
@@ -51,6 +53,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Valida el nombre y, segun haya editingChestId o no, llama a updateChest o addChest; al terminar cierra el modal y recarga
     const handleSaveChest = async () => {
         const clubId = route.params?.clubId || user?.organizationId;
         if (!chestName) return Alert.alert('Error', 'El nombre es obligatorio');
@@ -67,6 +70,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Pide confirmacion con un Alert nativo antes de borrar el cofre y todo su contenido
     const handleDeleteChest = (id: string) => {
         const clubId = route.params?.clubId || user?.organizationId;
         Alert.alert(
@@ -84,6 +88,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         );
     };
 
+    // Abre el modal de contenido del cofre: carga en paralelo (secuencial aqui) el pool actual del cofre y los items del mercado del club para poder añadirlos
     const openPoolManagement = async (chest: any) => {
         setSelectedChest(chest);
         setIsLoading(true);
@@ -100,6 +105,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Añade el item seleccionado al pool con su peso, y refresca la lista del pool para reflejar el cambio
     const handleAddPoolItem = async () => {
         if (!selectedPoolItem) return;
         try {
@@ -112,6 +118,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Quita un item del pool del cofre y vuelve a pedir la lista actualizada para refrescar la vista
     const handleRemovePoolItem = async (itemId: string) => {
         try {
             await ClubService.removePoolItem(selectedChest.chest_id, itemId);
@@ -122,6 +129,7 @@ export const ChestManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Sumamos los pesos de todos los items del pool: nos sirve de base para calcular el % de probabilidad de cada uno al renderizar
     const totalWeight = poolItems.reduce((sum, item) => sum + (item.weight || 0), 0);
 
     return (
@@ -131,8 +139,9 @@ export const ChestManagementScreen = ({ route }: any) => {
                     <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.title}>Gestión de Cofres</Text>
-                <TouchableOpacity 
-                    style={styles.addButton} 
+                {/* Boton de cabecera para crear cofre nuevo: limpia el formulario (sin editingChestId) y abre el modal */}
+                <TouchableOpacity
+                    style={styles.addButton}
                     onPress={() => {
                         setEditingChestId(null);
                         setChestName('');
@@ -168,7 +177,8 @@ export const ChestManagementScreen = ({ route }: any) => {
                                     >
                                         <Text style={styles.actionButtonText}>Contenido</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity 
+                                    {/* Boton Editar: precarga los datos del cofre seleccionado en el formulario y abre el modal en modo edicion */}
+                                    <TouchableOpacity
                                         style={[styles.actionButton, { backgroundColor: theme.colors.surface }]}
                                         onPress={() => {
                                             setEditingChestId(item.chest_id);
@@ -193,7 +203,7 @@ export const ChestManagementScreen = ({ route }: any) => {
                 />
             )}
 
-            {/* Modal: Create/Edit Chest */}
+            {/* Modal de creacion/edicion de cofre: el titulo cambia segun editingChestId y reutiliza los mismos campos para crear o editar */}
             <Modal visible={isChestModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -232,7 +242,7 @@ export const ChestManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Modal: Pool Management */}
+            {/* Modal de gestion del pool de recompensas: aqui se elige que items puede soltar el cofre y con que peso */}
             <Modal visible={isPoolModalVisible} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { width: '90%', height: '80%' }]}>
@@ -251,6 +261,7 @@ export const ChestManagementScreen = ({ route }: any) => {
                             <Text style={styles.addPoolButtonText}>{isAddingPoolItem ? 'Cancelar Selección' : 'Añadir Ítem al Pool'}</Text>
                         </TouchableOpacity>
 
+                        {/* Formulario plegable para añadir un item al pool: se muestra solo cuando isAddingPoolItem esta activo */}
                         {isAddingPoolItem && (
                             <View style={styles.addItemForm}>
                                 <Text style={styles.label}>Seleccionar Ítem:</Text>
@@ -285,6 +296,7 @@ export const ChestManagementScreen = ({ route }: any) => {
                             data={poolItems}
                             keyExtractor={(item) => item.item_id}
                             renderItem={({ item }) => {
+                                // Calculamos el % de probabilidad de cada item dividiendo su peso entre el peso total del pool
                                 const probability = ((item.weight / totalWeight) * 100).toFixed(1);
                                 return (
                                     <View style={styles.poolCard}>

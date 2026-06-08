@@ -23,11 +23,13 @@ export const ProfileScreen = ({ route }: any) => {
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Copia local editable del perfil del usuario (se sincroniza con AsyncStorage y con Home al cambiar)
     const [localUser, setLocalUser] = useState<UserProfile>(user);
     const [isBeltPickerVisible, setIsBeltPickerVisible] = useState(false);
     const [isUsernameModalVisible, setIsUsernameModalVisible] = useState(false);
     const [newUsername, setNewUsername] = useState(user.username || '');
     const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
+    // Pestaña activa del perfil (evaluaciones / asistencia / informes) y filtros de la lista de evaluaciones
     const [activeTab, setActiveTab] = useState<'evaluations' | 'attendance' | 'reports'>('evaluations');
     const [evalSortOrder, setEvalSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [evalFilterTul, setEvalFilterTul] = useState<string | null>(null);
@@ -39,12 +41,15 @@ export const ProfileScreen = ({ route }: any) => {
     const [userPoints, setUserPoints] = useState<number>(0);
     const [isLoadingStats, setIsLoadingStats] = useState(true);
     const now = new Date();
+    // Estado del informe mensual: mes/año seleccionados y los datos cargados para ese periodo
     const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
     const [reportYear, setReportYear] = useState(now.getFullYear());
     const [isLoadingReport, setIsLoadingReport] = useState(true);
     const [reportEvaluations, setReportEvaluations] = useState<any[]>([]);
     const [reportAttendanceMap, setReportAttendanceMap] = useState<Record<string, string>>({});
 
+    // Al montar (o cambiar de usuario) cargamos en paralelo: evaluaciones, asistencia, puntos
+    // del club y el rango/cinturón "en vivo" del servidor (más fiable que el perfil cacheado)
     React.useEffect(() => {
         const loadStats = async () => {
             try {
@@ -52,8 +57,8 @@ export const ProfileScreen = ({ route }: any) => {
                     TrackingService.getEvaluations(localUser.id),
                     TrackingService.getAttendance(localUser.id),
                     ClubService.getUserPoints(localUser.id).catch(() => ({ points: 0, streak: 0 })),
-                    // Always fetch the live rank from the server — users.belt is the
-                    // authoritative column and the cached profile may be stale.
+                    // Pedimos siempre el rango actualizado al servidor: users.belt es la
+                    // columna de referencia y el perfil cacheado puede estar desactualizado
                     fetch(`/api/users/${localUser.id}/rank`).catch(() => null)
                 ]);
                 setEvaluations(evals);
@@ -79,6 +84,8 @@ export const ProfileScreen = ({ route }: any) => {
         loadStats();
     }, [localUser.id]);
 
+    // Carga el informe mensual (evaluaciones y asistencia) cada vez que cambia el usuario
+    // o el mes/año seleccionado en el selector de informes
     React.useEffect(() => {
         const loadMonthlyReport = async () => {
             setIsLoadingReport(true);
@@ -98,6 +105,7 @@ export const ProfileScreen = ({ route }: any) => {
         loadMonthlyReport();
     }, [localUser.id, reportMonth, reportYear]);
 
+    // Navega al mes anterior del informe, ajustando el año si cruzamos de enero a diciembre
     const goToPrevMonth = () => {
         if (reportMonth === 1) {
             setReportMonth(12);
@@ -107,6 +115,7 @@ export const ProfileScreen = ({ route }: any) => {
         }
     };
 
+    // Navega al mes siguiente del informe, ajustando el año si cruzamos de diciembre a enero
     const goToNextMonth = () => {
         if (reportMonth === 12) {
             setReportMonth(1);
@@ -116,6 +125,7 @@ export const ProfileScreen = ({ route }: any) => {
         }
     };
 
+    // Aqui se configuran las claves de traducción de cada mes y sus nombres por defecto en español
     const MONTH_NAMES = [
         'reports.january', 'reports.february', 'reports.march', 'reports.april',
         'reports.may', 'reports.june', 'reports.july', 'reports.august',
@@ -123,6 +133,8 @@ export const ProfileScreen = ({ route }: any) => {
     ];
     const MONTH_DEFAULTS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+    // Actualiza el cinturón/rango del usuario (solo aplica a usuarios sin club, que lo eligen manualmente):
+    // guarda en backend, refresca el estado local, sincroniza la pantalla Home y persiste en AsyncStorage
     const handleUpdateBelt = async (rank: number) => {
         const newBeltName = BELT_CONFIGS[rank]?.name || localUser.beltName;
 
@@ -133,14 +145,14 @@ export const ProfileScreen = ({ route }: any) => {
             setLocalUser(updatedUser);
             setIsBeltPickerVisible(false);
 
-            // Sync with Home screen
+            // Propagamos el cambio a la pantalla Home pasándole el usuario actualizado
             navigation.navigate({
                 name: 'Home',
                 params: { user: updatedUser },
                 merge: true,
             });
 
-            // Update Async Storage
+            // Persistimos el usuario actualizado en el almacenamiento local del dispositivo
             import('@react-native-async-storage/async-storage').then(({ default: AsyncStorage }) => {
                 AsyncStorage.setItem('@Learning Dungeon_user', JSON.stringify(updatedUser));
             });
@@ -151,6 +163,8 @@ export const ProfileScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el selector de imágenes, recorta a cuadrado, codifica la foto en base64
+    // y la sube como nueva foto de perfil, sincronizando Home y AsyncStorage
     const handlePickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
@@ -162,7 +176,8 @@ export const ProfileScreen = ({ route }: any) => {
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
             try {
-                // Determine format
+                // Detectamos el formato a partir de la extensión del archivo para construir
+                // correctamente la cadena base64 con su mime-type (png o jpeg)
                 const uri = result.assets[0].uri;
                 const extension = uri.split('.').pop()?.toLowerCase() || 'jpeg';
                 const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
@@ -178,7 +193,7 @@ export const ProfileScreen = ({ route }: any) => {
                     merge: true,
                 });
                 
-                // Update Async Storage
+                // Actualizamos tambien la copia guardada en el almacenamiento local del dispositivo
                 import('@react-native-async-storage/async-storage').then(({ default: AsyncStorage }) => {
                     AsyncStorage.setItem('@Learning Dungeon_user', JSON.stringify(updatedUser));
                 });
@@ -277,16 +292,17 @@ export const ProfileScreen = ({ route }: any) => {
     };
 
     const currentStreak = calculateStreak();
-    // Base size 16. Grows by 4 for every streak day, max cap at 5 days (36)
+    // Tamaño base 16, crece 4 unidades por cada dia de racha, con un tope maximo de 5 dias (36)
     const flameSize = Math.min(16 + (currentStreak * 4), 36);
 
-    // Color logic
+    // Logica de color: si la racha esta a cero usamos el color secundario neutro, si no, naranja "fuego"
     const isStreakZero = currentStreak === 0;
     const streakColor = isStreakZero ? theme.colors.textSecondary : '#FF6B00';
     const streakBorderColor = isStreakZero ? theme.colors.border : '#FF6B0030';
     const streakBgColor = isStreakZero ? theme.colors.background : theme.colors.surface;
 
-    // Report logic based on user tier — scoped to the selected month
+    // Renderiza la pestaña de Informes: estadisticas (puntuacion media, tasa de asistencia, ultimo comentario)
+    // y el listado de evaluaciones de tecnica del mes seleccionado, todo acotado al mes/año elegidos por el usuario
     const renderReportTab = () => {
         if (isLoadingStats || isLoadingReport) {
             return (
@@ -295,8 +311,8 @@ export const ProfileScreen = ({ route }: any) => {
                 </View>
             );
         }
-        // Normalize each evaluation to its own scale (TUL: /3, category rubrics & technique: /5) before averaging,
-        // since a student can have evaluations from different activity types mixed together.
+        // Normalizamos cada evaluacion a su propia escala (Tul: /3, rubricas por categoria y tecnica: /5) antes
+        // de promediar, ya que un alumno puede tener evaluaciones de distintos tipos de actividad mezcladas
         const totalScoreRatio = reportEvaluations.reduce((acc, ev) => acc + ((ev.score || 0) / (ev.maxScore || 3)), 0);
         const avgScorePct = reportEvaluations.length > 0 ? Math.round((totalScoreRatio / reportEvaluations.length) * 100) : null;
 
@@ -304,7 +320,7 @@ export const ProfileScreen = ({ route }: any) => {
         const presentClasses = Object.values(reportAttendanceMap).filter(status => status === 'present' || status === 'late').length;
         const attendanceRate = totalClasses > 0 ? Math.round((presentClasses / totalClasses) * 100) + '%' : '-';
 
-        // Get latest comment for detailed report
+        // Tomamos el comentario de la evaluacion mas reciente para mostrarlo como "informe detallado"
         const latestEvaluation = reportEvaluations.length > 0 ? [...reportEvaluations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] : null;
         const detailedReport = latestEvaluation?.summaryComment || latestEvaluation?.comment || t('settings.none');
 
@@ -559,7 +575,7 @@ export const ProfileScreen = ({ route }: any) => {
                 </View>
             </ScrollView>
 
-            {/* Belt Picker Modal for Unaffiliated Users */}
+            {/* Modal selector de cinturon para usuarios sin club asignado */}
             <Modal
                 animationType="slide"
                 transparent={true}
@@ -1069,7 +1085,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
-    // Modal Styles
+    // Estilos de los modales
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.8)',

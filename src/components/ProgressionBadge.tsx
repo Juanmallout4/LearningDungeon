@@ -12,6 +12,9 @@ interface ProgressionBadgeProps {
     textSize?: number;
 }
 
+// Pequeña insignia que muestra el nivel/grado actual de un usuario en una actividad: busca el color y
+// nombre correspondientes en el catalogo PROGRESSION_SCALES segun la actividad y el numero de orden del nivel,
+// y si no encuentra una entrada en el catalogo recurre al nombre de nivel recibido por props como respaldo
 export const ProgressionBadge: React.FC<ProgressionBadgeProps> = ({
     activityType,
     levelOrder,

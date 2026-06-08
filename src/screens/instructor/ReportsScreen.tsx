@@ -19,10 +19,12 @@ type RootStackParamList = { Reports: { user: UserProfile } };
 type ReportsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Reports'>;
 type ReportsScreenRouteProp = RouteProp<RootStackParamList, 'Reports'>;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── funciones auxiliares ──────────────────────────────────────────────────────
 
 const toISO = (d: Date) => d.toISOString().split('T')[0];
 
+// Calcula el rango de fechas (desde/hasta) y la etiqueta a mostrar para el periodo seleccionado (mensual o quincenal),
+// recortando el final al dia de hoy si el periodo todavia no ha terminado
 const getPeriodDates = (mode: 'monthly' | 'biweekly', start: Date) => {
     const todayISO = toISO(new Date());
     if (mode === 'monthly') {
@@ -45,8 +47,9 @@ const getPeriodDates = (mode: 'monthly' | 'biweekly', start: Date) => {
     };
 };
 
-// ── small chart components ────────────────────────────────────────────────────
+// ── pequeños componentes de grafico ───────────────────────────────────────────
 
+// Grafico de anillo (donut) que representa un porcentaje (0-100) dibujando un circulo de fondo y un arco proporcional encima
 const DonutChart: React.FC<{ value: number; size?: number; strokeColor: string; trackColor: string }> = ({
     value, size = 88, strokeColor, trackColor,
 }) => {
@@ -68,6 +71,7 @@ const DonutChart: React.FC<{ value: number; size?: number; strokeColor: string; 
     );
 };
 
+// Barra horizontal de progreso: pinta el valor relativo al maximo de la serie, con etiqueta, valor numerico y subtitulo opcional
 const HBar: React.FC<{ label: string; value: number; maxValue: number; color: string; suffix?: string; subtitle?: string; theme: any }> = ({
     label, value, maxValue, color, suffix = '', subtitle, theme,
 }) => {
@@ -86,8 +90,9 @@ const HBar: React.FC<{ label: string; value: number; maxValue: number; color: st
     );
 };
 
-// ── KPI card ─────────────────────────────────────────────────────────────────
+// ── tarjeta de KPI ────────────────────────────────────────────────────────────
 
+// Tarjeta compacta que muestra un icono, un valor destacado y una etiqueta descriptiva (version "small" para filas con varias)
 const KpiCard: React.FC<{ icon: string; value: string; label: string; color: string; theme: any; small?: boolean }> = ({
     icon, value, label, color, theme, small,
 }) => (
@@ -109,8 +114,9 @@ const kpiCardStyle = StyleSheet.create({
     label: { marginTop: 3, textAlign: 'center' },
 });
 
-// ── section header ────────────────────────────────────────────────────────────
+// ── cabecera de seccion ───────────────────────────────────────────────────────
 
+// Cabecera reutilizable para cada bloque del informe: icono + titulo, con color personalizable
 const SectionHeader: React.FC<{ icon: string; title: string; theme: any; color?: string }> = ({ icon, title, theme, color }) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
         <MaterialCommunityIcons name={icon as any} size={20} color={color || theme.colors.primary} style={{ marginRight: 8 }} />
@@ -118,7 +124,7 @@ const SectionHeader: React.FC<{ icon: string; title: string; theme: any; color?:
     </View>
 );
 
-// ── main screen ───────────────────────────────────────────────────────────────
+// ── pantalla principal ────────────────────────────────────────────────────────
 
 export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
     const { user } = route.params;
@@ -126,6 +132,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
     const { theme } = useTheme();
 
     const rawPlan = user.plan || 'free';
+    // Compatibilidad: instructores con plan "free" pero pertenecientes a un club se tratan como club_pro a efectos de informes
     const plan = (rawPlan === 'free' && user.role === 'instructor' && user.organizationName) ? 'club_pro' : rawPlan;
 
     const isElite = plan === 'club_elite';
@@ -133,7 +140,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
     const isLite = plan === 'club_lite';
     const hasPlan = isPro || isLite;
 
-    // period state
+    // Estado del periodo analizado: modo (mensual/quincenal) y fecha de inicio del periodo actual
     const [periodMode, setPeriodMode] = useState<'monthly' | 'biweekly'>('monthly');
     const [periodStart, setPeriodStart] = useState<Date>(() => {
         const d = new Date();
@@ -142,6 +149,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
 
     const period = getPeriodDates(periodMode, periodStart);
 
+    // Avanza o retrocede el periodo mostrado: un mes completo en modo mensual, o 14 dias en modo quincenal
     const navigatePeriod = (dir: number) => {
         if (periodMode === 'monthly') {
             setPeriodStart(prev => new Date(prev.getFullYear(), prev.getMonth() + dir, 1));
@@ -150,7 +158,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         }
     };
 
-    // data state
+    // Estado con los datos del informe que llegan del backend
     const [activities, setActivities] = useState<Activity[]>([]);
     const [evaluations, setEvaluations] = useState<any[]>([]);
     const [attendance, setAttendance] = useState<any[]>([]);
@@ -162,13 +170,15 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
 
-    // segment filter
+    // Filtro de segmentacion del informe: por defecto general, o filtrado por una actividad o un instructor concreto
     const [segmentMode, setSegmentMode] = useState<'general' | 'activity' | 'instructor'>('general');
     const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
 
+    // Solo enviamos el id de actividad/instructor al backend si el modo de segmentacion correspondiente esta activo
     const segmentActivityId = segmentMode === 'activity' ? selectedSegmentId ?? undefined : undefined;
     const segmentInstructorId = segmentMode === 'instructor' ? selectedSegmentId ?? undefined : undefined;
 
+    // Pide al backend todos los datos del informe para el periodo y segmento actuales; las secciones Elite piden datos extra
     const loadData = useCallback(async () => {
         if (!hasPlan || !user.organizationId) return;
         setIsLoading(true);
@@ -203,6 +213,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         }
     }, [user.organizationId, period.from, period.to, isElite, segmentActivityId, segmentInstructorId]);
 
+    // Si el club no tiene plan de pago, avisamos de que hay que mejorar el plan para ver informes y volvemos atras
     useEffect(() => {
         if (plan === 'free') {
             Alert.alert(t('reports.title'), t('reports.upgradeToView'), [
@@ -211,12 +222,14 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         }
     }, [plan]);
 
+    // Recargamos los datos cada vez que cambian el periodo, el segmento o el plan (loadData ya incluye esas dependencias)
     useEffect(() => { loadData(); }, [loadData]);
 
     if (plan === 'free') return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
 
-    // ── computed ─────────────────────────────────────────────────────────────
+    // ── datos derivados ───────────────────────────────────────────────────────
 
+    // Unimos alumnos provenientes de evaluaciones y de asistencia en una unica lista sin duplicados, preservando el orden de aparicion
     const seenIds = new Set<string>();
     const uniqueStudents: { id: string; name: string }[] = [];
     for (const e of evaluations) {
@@ -226,17 +239,19 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         if (a.studentId && !seenIds.has(a.studentId)) { seenIds.add(a.studentId); uniqueStudents.push({ id: a.studentId, name: a.studentName }); }
     }
 
-    // Normalize each evaluation to its own scale (TUL: /3, category rubrics: /5) before averaging,
-    // since the merged list can contain evaluations from different activity types.
+    // Normalizamos cada evaluacion a su propia escala (tuls: /3, rubricas por categorias: /5) antes de promediar,
+    // porque la lista combinada puede mezclar evaluaciones de distintos tipos de actividad con distinta puntuacion maxima
     const avgScorePct = evaluations.length > 0
         ? (evaluations.reduce((acc, ev) => acc + ((ev.score || 0) / (ev.maxScore || 3)), 0) / evaluations.length) * 100
         : 0;
 
+    // Sumamos presentes y sesiones totales de todos los alumnos para obtener la tasa de asistencia media del club
     let totalPresent = 0, totalSessions = 0;
     attendance.forEach(r => { totalPresent += r.present; totalSessions += r.total; });
     const avgAttendance = totalSessions === 0 ? 0 : (totalPresent / totalSessions) * 100;
 
-    // ── retention KPIs (Elite) ────────────────────────────────────────────────
+    // ── KPIs de retencion (solo Elite) ────────────────────────────────────────
+    // Calcula tasas de retencion/abandono y la duracion media de alta a partir de los cambios de plantilla y el churn mensual
     const retentionKpis = (() => {
         if (!rosterChanges || !overview) return null;
         const nuevosSocios = new Set((rosterChanges.enrolled || []).map((s: any) => s.studentId)).size;
@@ -263,6 +278,8 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         return { tasaRetencion, tasaAbandono, duracionMedia };
     })();
 
+    // Construye el objeto completo de datos que se envia al servicio de exportacion (PDF/CSV): combina KPIs, listado
+    // de alumnos con sus notas/asistencia, cambios de plantilla y estadisticas de gamificacion segun el plan
     const buildFullReportData = () => {
         const clubName = user.organizationName || 'Mi Club';
 
@@ -329,12 +346,14 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         };
     };
 
+    // Genera los datos del informe y delega en ExportService la creacion del archivo PDF o CSV
     const triggerExport = async (format: 'pdf' | 'csv') => {
         const data = buildFullReportData();
         if (format === 'pdf') await ExportService.exportToPDF(data);
         else await ExportService.exportToCSV(data);
     };
 
+    // Muestra el selector de formato de exportacion adaptado a la plataforma: modal en web, action sheet en iOS, alert en Android
     const handleExport = () => {
         if (Platform.OS === 'web') { setShowExportModal(true); return; }
         if (Platform.OS === 'ios') {
@@ -351,6 +370,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         }
     };
 
+    // Busca al alumno por nombre entre evaluaciones/asistencia (para recuperar su id y datos) y navega a su perfil
     const handleStudentPress = (name: string) => {
         const ev = evaluations.find(e => e.studentName === name) || attendance.find(a => a.studentName === name);
         if (!ev) return;
@@ -359,6 +379,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         });
     };
 
+    // Navega directamente al perfil de un alumno a partir de su id (usado desde las listas de altas/bajas/top jugadores)
     const navigateToStudent = (studentId: string, studentName: string, email?: string) => {
         if (!studentId) return;
         navigation.navigate('Profile', {
@@ -366,8 +387,9 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
         });
     };
 
-    // ── render ────────────────────────────────────────────────────────────────
+    // ── renderizado ───────────────────────────────────────────────────────────
 
+    // Total de alumnos matriculados en todas las actividades (con minimo 1 para evitar division entre cero en las barras)
     const totalEnrolledStudents = overview?.activities?.reduce((s: number, a: any) => s + a.studentCount, 0) || 1;
 
     const gamTopStudents: any[] = gamification?.topStudents || [];
@@ -376,7 +398,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* ── Header ── */}
+            {/* ── Cabecera con titulo, distintivo del plan del club y boton de exportar ── */}
             <View style={styles.header}>
                 <View style={styles.headerTop}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -398,7 +420,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
 
             <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
 
-                {/* ── Period mode toggle (Elite only) ── */}
+                {/* ── Selector de modo de periodo: mensual o quincenal (solo Elite) ── */}
                 {isElite && (
                     <View style={[styles.section, { flexDirection: 'row', padding: 4, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 12 }]}>
                         {(['monthly', 'biweekly'] as const).map(mode => (
@@ -418,7 +440,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Period selector (Pro + Elite) ── */}
+                {/* ── Navegacion entre periodos (flechas atras/adelante) — Pro y Elite ── */}
                 {(isPro || isLite) && (
                     <View style={styles.periodSelector}>
                         <TouchableOpacity onPress={() => navigatePeriod(-1)} style={styles.periodArrow}>
@@ -431,10 +453,10 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Segment filter (Pro + Elite) ── */}
+                {/* ── Filtro de segmentacion: ver datos generales o filtrados por actividad/instructor (Pro y Elite) ── */}
                 {isPro && (
                     <View style={{ marginHorizontal: 16, marginBottom: 8 }}>
-                        {/* Mode tabs */}
+                        {/* Pestañas para elegir el modo de segmentacion */}
                         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
                             {(['general', 'activity', 'instructor'] as const).map(mode => {
                                 const label = mode === 'general' ? 'General' : mode === 'activity' ? 'Actividad' : 'Instructor';
@@ -450,7 +472,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                                 );
                             })}
                         </View>
-                        {/* Activity picker */}
+                        {/* Selector horizontal de actividad: solo visible cuando el modo de segmentacion es "actividad" */}
                         {segmentMode === 'activity' && (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                                 {activities.map(act => {
@@ -467,7 +489,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                                 })}
                             </ScrollView>
                         )}
-                        {/* Instructor picker */}
+                        {/* Selector horizontal de instructor: solo visible cuando el modo de segmentacion es "instructor" */}
                         {segmentMode === 'instructor' && (
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                                 {instructors.map(ins => {
@@ -487,7 +509,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── KPI Row 1: score + attendance (Pro + Elite) ── */}
+                {/* ── Fila de KPIs 1: nota media y porcentaje de asistencia (Pro y Elite) ── */}
                 {isPro && (
                     <View style={[styles.section, { flexDirection: 'row' }]}>
                         <KpiCard icon="star-outline" value={`${avgScorePct.toFixed(0)}%`} label={t('reports.averageScore')} color={theme.colors.primary} theme={theme} />
@@ -500,7 +522,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── KPI Row 2: Elite totals ── */}
+                {/* ── Fila de KPIs 2: totales del club (alumnos, media por grupo, ocupacion) — solo Elite ── */}
                 {isElite && overview && (
                     <View style={[styles.section, { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }]}>
                         <KpiCard icon="account-group" value={`${overview.totalStudents}`} label={t('reports.totalStudents')} color={theme.colors.primary} theme={theme} small />
@@ -509,7 +531,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Activity Distribution (Pro + Elite) ── */}
+                {/* ── Distribucion de actividades: alumnos por actividad. Elite usa datos de ocupacion reales; el resto cuenta evaluaciones ── */}
                 {isPro && (overview?.activities?.length > 0 || activities.length > 0) && (
                     <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 16, padding: 16 }]}>
                         <SectionHeader icon="chart-bar" title={t('reports.activityDistribution')} theme={theme} />
@@ -545,12 +567,12 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Roster Changes (Elite only) ── */}
+                {/* ── Cambios de plantilla: nuevas fichas, altas y bajas del periodo, mas KPIs de retencion (solo Elite) ── */}
                 {isElite && (
                     <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 16, padding: 16 }]}>
                         <SectionHeader icon="swap-horizontal" title={t('reports.rosterChanges')} theme={theme} color={theme.colors.primary} />
 
-                        {/* Summary badges */}
+                        {/* Insignias resumen con los totales de fichas nuevas, altas y bajas del periodo */}
                         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                             <View style={[styles.rosterBadge, { flex: 1, minWidth: 100, backgroundColor: '#2196F318' }]}>
                                 <MaterialCommunityIcons name="account-plus" size={16} color="#2196F3" />
@@ -572,7 +594,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                             </View>
                         </View>
 
-                        {/* Retention KPIs */}
+                        {/* KPIs de retencion: tasa de retencion, tasa de abandono y duracion media de alta calculados arriba */}
                         {retentionKpis && (
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                                 <KpiCard
@@ -602,7 +624,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                             </View>
                         )}
 
-                        {/* Nuevas fichas */}
+                        {/* Listado de fichas de alumno creadas en el periodo (aun sin matricula en un grupo) */}
                         {rosterChanges?.newAccounts?.length > 0 && (
                             <>
                                 <Text style={{ color: '#2196F3', fontWeight: '600', fontSize: 13, marginBottom: 6 }}>Nuevas fichas</Text>
@@ -618,7 +640,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                             </>
                         )}
 
-                        {/* Altas */}
+                        {/* Listado de altas: alumnos que se matricularon en algun grupo durante el periodo */}
                         {rosterChanges?.enrolled?.length > 0 && (
                             <>
                                 <Text style={{ color: '#4CAF50', fontWeight: '600', fontSize: 13, marginBottom: 6 }}>Altas</Text>
@@ -634,7 +656,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                             </>
                         )}
 
-                        {/* Bajas */}
+                        {/* Listado de bajas: alumnos que dejaron de estar matriculados en algun grupo durante el periodo */}
                         {rosterChanges?.unenrolled?.length > 0 && (
                             <>
                                 <Text style={{ color: '#F44336', fontWeight: '600', fontSize: 13, marginTop: 10, marginBottom: 6 }}>Bajas</Text>
@@ -656,25 +678,25 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Gamification (Elite only) ── */}
+                {/* ── Gamificacion del club: nivel medio, items recogidos, distribucion por nivel/clase y ranking (solo Elite) ── */}
                 {isElite && (
                     <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 16, padding: 16 }]}>
                         <SectionHeader icon="sword-cross" title={t('reports.gamification')} theme={theme} color="#FF9800" />
                         {gamification ? (
                             <>
-                                {/* Gamification KPIs */}
+                                {/* KPIs de gamificacion: nivel medio del club y total de objetos recolectados */}
                                 <View style={{ flexDirection: 'row', marginBottom: 16 }}>
                                     <KpiCard icon="sword" value={`${gamification.avgLevel}`} label={t('reports.avgLevel')} color="#FF9800" theme={theme} small />
                                     <KpiCard icon="treasure-chest" value={`${gamification.totalItemsCollected}`} label={t('reports.totalItems')} color="#9C27B0" theme={theme} small />
                                 </View>
 
-                                {/* Level distribution */}
+                                {/* Distribucion de alumnos por rango de nivel (cada barra representa un bucket de niveles) */}
                                 <Text style={{ color: theme.colors.text, fontWeight: '600', marginBottom: 8 }}>{t('reports.levelDistribution')}</Text>
                                 {Object.entries(levelBuckets).map(([range, count]) => (
                                     <HBar key={range} label={`Lv ${range}`} value={count as number} maxValue={maxBucket} color="#FF9800" theme={theme} />
                                 ))}
 
-                                {/* RPG class distribution */}
+                                {/* Distribucion de alumnos por clase RPG elegida (guerrero, mago, etc.) */}
                                 {Object.keys(gamification.classDist).length > 0 && (
                                     <>
                                         <Text style={{ color: theme.colors.text, fontWeight: '600', marginTop: 12, marginBottom: 8 }}>{t('reports.classDistribution')}</Text>
@@ -684,7 +706,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                                     </>
                                 )}
 
-                                {/* Top players */}
+                                {/* Ranking de los alumnos con mas nivel del club */}
                                 {gamTopStudents.length > 0 && (
                                     <>
                                         <Text style={{ color: theme.colors.text, fontWeight: '600', marginTop: 12, marginBottom: 8 }}>{t('reports.topPlayers')}</Text>
@@ -706,9 +728,9 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                     </View>
                 )}
 
-                {/* ── Student list (all paid plans) ── */}
+                {/* ── Listado de alumnos con su nota, asistencia y nivel (visible en todos los planes de pago) ── */}
                 <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 16, overflow: 'hidden' }]}>
-                    {/* Table header */}
+                    {/* Cabecera de la tabla: las columnas de asistencia y nivel solo aparecen segun el plan (Pro/Elite) */}
                     <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
                         <Text style={[styles.colStudent, { color: theme.colors.textSecondary }]}>Alumno</Text>
                         <View style={styles.colStats}>
@@ -724,6 +746,8 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                         </View>
                     ) : (
                         uniqueStudents.map(({ id, name }) => {
+                            // Por cada alumno: calculamos su nota media normalizada, su tasa de asistencia, las actividades
+                            // en las que tiene evaluaciones y, si aplica, su progreso de gamificacion (nivel)
                             const evs = evaluations.filter(e => e.studentId === id);
                             const scPct = evs.length > 0
                                 ? (evs.reduce((a, e) => a + ((e.score || 0) / (e.maxScore || 3)), 0) / evs.length) * 100
@@ -764,7 +788,7 @@ export const ReportsScreen: React.FC<any> = ({ navigation, route }) => {
                 </View>
             </ScrollView>
 
-            {/* ── Export modal (web) ── */}
+            {/* ── Modal de seleccion de formato de exportacion (solo se usa en web; iOS/Android usan menus nativos) ── */}
             <Modal visible={showExportModal} transparent animationType="fade">
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowExportModal(false)}>
                     <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>

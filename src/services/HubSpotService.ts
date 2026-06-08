@@ -1,44 +1,33 @@
 import { Platform } from 'react-native';
 
-/**
- * HubSpot Tracking Service
- * Handles user identification and event tracking for the CRM.
- */
+// Servicio de integración con HubSpot (CRM): identifica visitantes y envía eventos personalizados.
+// Solo funciona en web, ya que se apoya en el script de tracking de HubSpot inyectado en window._hsq.
 export const HubSpotService = {
-    /**
-     * Initializes the tracking queue if not present.
-     */
+    // Crea la cola global window._hsq si todavía no existe (debe llamarse antes de usar el resto de métodos)
     init: () => {
         if (Platform.OS !== 'web') return;
         (window as any)._hsq = (window as any)._hsq || [];
     },
 
-    /**
-     * Identifies the current visitor in HubSpot CRM.
-     * @param email The user's email address.
-     * @param properties Optional additional properties (name, etc).
-     */
+    // Identifica al visitante actual en HubSpot mediante su email y propiedades extra (nombre, etc.),
+    // y dispara un trackPageView para sincronizar la identidad de inmediato
     identify: (email: string, properties: Record<string, any> = {}) => {
         if (Platform.OS !== 'web') return;
-        
+
         const _hsq = (window as any)._hsq = (window as any)._hsq || [];
-        
+
         _hsq.push(['identify', {
             email: email,
             ...properties
         }]);
 
-        // Trigger a page view to sync the identity immediately
+        // Disparamos un page view para sincronizar la identidad inmediatamente
         _hsq.push(['trackPageView']);
-        
+
         console.log('[HubSpot] Identity pushed for:', email);
     },
 
-    /**
-     * Tracks a custom event.
-     * @param eventId The HubSpot event ID or name.
-     * @param value Optional numerical value for the event.
-     */
+    // Empuja un evento personalizado a la cola de HubSpot identificado por su id/nombre, con un valor numérico opcional
     trackEvent: (eventId: string, value?: number) => {
         if (Platform.OS !== 'web') return;
         const _hsq = (window as any)._hsq = (window as any)._hsq || [];

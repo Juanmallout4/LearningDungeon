@@ -7,8 +7,10 @@ import { useTranslation } from 'react-i18next';
 import { ClubService } from '../../services/ClubService';
 import { Activity } from '../../types';
 
+// Aqui configuramos el catalogo de iconos que el club puede elegir para representar cada actividad
 const ICON_OPTIONS = ['karate', 'shoe-ballet', 'yoga', 'run', 'soccer', 'basketball', 'tennis', 'swim', 'bike', 'boxing-glove', 'palette', 'music', 'robot', 'translate', 'weight-lifter', 'dumbbell', 'human-handsup', 'meditation', 'sword-cross', 'shield-half-full'];
 
+// Tipos de actividad disponibles; el tipo elegido condiciona que tuls/niveles/evaluaciones se muestran despues
 const ACTIVITY_TYPE_OPTIONS: { value: string; labelKey: string; defaultLabel: string }[] = [
     { value: 'general', labelKey: 'settings.activityTypeGeneral', defaultLabel: 'General' },
     { value: 'taekwondo_itf', labelKey: 'settings.activityTypeTaekwondo', defaultLabel: 'Taekwondo ITF' },
@@ -27,17 +29,19 @@ export const ActivityListScreen = ({ route }: any) => {
     const [activities, setActivities] = useState<Activity[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Modal state – shared for create and edit
+    // Estos estados del modal se reutilizan tanto para crear una actividad nueva como para editar una existente
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [modalName, setModalName] = useState('');
     const [modalIcon, setModalIcon] = useState(ICON_OPTIONS[0]);
     const [modalActivityType, setModalActivityType] = useState('general');
 
+    // Al montar la pantalla, cargamos las actividades del club desde el backend
     useEffect(() => {
         loadActivities();
     }, []);
 
+    // Pide al servicio del club las actividades de la organizacion del usuario y las guarda en el estado
     const loadActivities = async () => {
         if (!user.organizationId) {
             setIsLoading(false);
@@ -53,6 +57,7 @@ export const ActivityListScreen = ({ route }: any) => {
         }
     };
 
+    // Si venimos a pedir tecnica, solo mostramos actividades de taekwondo ITF (las unicas con tuls)
     const visibleActivities = initialMode === 'technique'
         ? activities.filter(a => a.activityType === 'taekwondo_itf')
         : activities;
@@ -65,8 +70,9 @@ export const ActivityListScreen = ({ route }: any) => {
         navigation.navigate('Reports', { user });
     };
 
-    // ── Open modal for CREATE ──────────────────────────────────────────────────
+    // Abre el modal en modo creacion, comprobando antes el limite de actividades segun el plan del club
     const handleCreateActivity = () => {
+        // Aqui configuramos cuantas actividades puede tener cada plan de club
         const maxActivities =
             user.plan === 'club_elite' ? 10 :
             user.plan === 'club_pro'   ? 5  :
@@ -86,7 +92,7 @@ export const ActivityListScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
-    // ── Open modal for EDIT ────────────────────────────────────────────────────
+    // Abre el modal precargado con los datos de la actividad que se quiere editar
     const handleEditActivity = (activity: Activity) => {
         setEditingActivity(activity);
         setModalName(activity.name);
@@ -95,7 +101,7 @@ export const ActivityListScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
-    // ── Delete with confirmation ───────────────────────────────────────────────
+    // Pide confirmacion antes de borrar; si el usuario acepta, elimina la actividad y la quita de la lista local
     const handleDeleteActivity = (activity: Activity) => {
         Alert.alert(
             t('common.confirmDelete', { defaultValue: 'Confirm Delete' }),
@@ -118,7 +124,7 @@ export const ActivityListScreen = ({ route }: any) => {
         );
     };
 
-    // ── Save (create or update) ────────────────────────────────────────────────
+    // Guarda la actividad: si veniamos editando, actualiza la existente; si no, crea una nueva
     const saveActivity = async () => {
         if (!modalName.trim()) {
             Alert.alert(t('common.error'), t('vocabulary.errorEmpty', { defaultValue: 'Name cannot be empty.' }));
@@ -132,11 +138,11 @@ export const ActivityListScreen = ({ route }: any) => {
         const activityType = modalActivityType;
         try {
             if (editingActivity) {
-                // UPDATE existing
+                // Actualizamos la actividad existente y la sustituimos en el array local por la version devuelta del servidor
                 const updated = await ClubService.updateActivity(user.organizationId, editingActivity.id, modalName, modalIcon, activityType);
                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
             } else {
-                // CREATE new
+                // Creamos una actividad nueva y la añadimos al final de la lista local
                 const newAct = await ClubService.addActivity(user.organizationId, modalName, modalIcon, activityType);
                 setActivities(prev => [...prev, newAct]);
             }
@@ -151,6 +157,7 @@ export const ActivityListScreen = ({ route }: any) => {
         setEditingActivity(null);
     };
 
+    // Solo el dueño del club puede crear, editar o borrar actividades; el resto solo las consulta
     const isOwner = user.role === 'club_owner';
 
     return (
@@ -163,11 +170,13 @@ export const ActivityListScreen = ({ route }: any) => {
                     <Text style={styles.headerTitle}>{t('settings.myClasses')}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {/* El acceso a informes lo ven tanto el dueño como los instructores */}
                     {(isOwner || user.role === 'instructor') && (
                         <TouchableOpacity onPress={handleReportsNavigate} style={[styles.addButton, { marginRight: 16 }]}>
                             <MaterialCommunityIcons name="chart-bar" size={28} color={theme.colors.primary} />
                         </TouchableOpacity>
                     )}
+                    {/* El boton de añadir actividad solo lo ve el dueño del club */}
                     {isOwner && (
                         <TouchableOpacity onPress={handleCreateActivity} style={styles.addButton}>
                             <Ionicons name="add" size={28} color={theme.colors.primary} />
@@ -193,6 +202,7 @@ export const ActivityListScreen = ({ route }: any) => {
                             <View style={styles.cardContent}>
                                 <Text style={styles.activityName}>{item.name}</Text>
                             </View>
+                            {/* El dueño ve botones de editar/borrar; el resto solo una flecha para entrar */}
                             {isOwner ? (
                                 <View style={styles.cardActions}>
                                     <TouchableOpacity
@@ -218,7 +228,7 @@ export const ActivityListScreen = ({ route }: any) => {
                 />
             )}
 
-            {/* Create / Edit Modal */}
+            {/* Modal compartido para crear o editar una actividad, segun si editingActivity tiene valor */}
             <Modal visible={isModalVisible} transparent animationType="slide" onRequestClose={closeModal}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -236,6 +246,7 @@ export const ActivityListScreen = ({ route }: any) => {
                             onChangeText={setModalName}
                         />
 
+                        {/* Carrusel horizontal con todos los iconos disponibles para elegir el de la actividad */}
                         <Text style={styles.label}>{t('settings.chooseIcon', { defaultValue: 'Choose Icon' })}</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconScroll}>
                             {ICON_OPTIONS.map(icon => (
@@ -256,6 +267,7 @@ export const ActivityListScreen = ({ route }: any) => {
                             ))}
                         </ScrollView>
 
+                        {/* Chips para elegir el tipo de actividad; el seleccionado se resalta con otro color */}
                         <Text style={styles.label}>{t('settings.chooseActivityType', { defaultValue: 'Tipo de Actividad' })}</Text>
                         <View style={styles.activityTypeRow}>
                             {ACTIVITY_TYPE_OPTIONS.map(option => {

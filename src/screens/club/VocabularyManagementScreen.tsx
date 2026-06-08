@@ -10,12 +10,14 @@ import { VocabularyTerm } from '../../types';
 import { BeltDisplay } from '../../components/BeltDisplay';
 import { BELT_CONFIGS } from '../../data/belts';
 
+// Aqui configuramos las actividades disponibles para el vocabulario (clave de traduccion + texto por defecto si falta)
 const VOCAB_ACTIVITY_TYPE_OPTIONS: { value: string; labelKey: string; defaultLabel: string }[] = [
     { value: 'taekwondo_itf', labelKey: 'settings.activityTypeTaekwondo', defaultLabel: 'Taekwondo ITF' },
     { value: 'ingles', labelKey: 'settings.activityTypeIngles', defaultLabel: 'Inglés' },
     { value: 'ballet', labelKey: 'settings.activityTypeBallet', defaultLabel: 'Ballet' },
 ];
 
+// Aqui configuramos los dos modos de contenido del termino: texto (palabra+significado) o imagen (tecnica ilustrada)
 const CONTENT_TYPE_OPTIONS: { value: 'text' | 'image'; labelKey: string; defaultLabel: string }[] = [
     { value: 'text', labelKey: 'vocabulary.contentTypeText', defaultLabel: 'Texto' },
     { value: 'image', labelKey: 'vocabulary.contentTypeImage', defaultLabel: 'Imagen' },
@@ -43,19 +45,23 @@ export const VocabularyManagementScreen = ({ route }: any) => {
     const [newTopic, setNewTopic] = useState('');
     const [topicFilter, setTopicFilter] = useState<string | null>(null);
 
+    // Extraemos del vocabulario cargado los temas (topic) unicos y no vacios, para pintar los chips de filtro por tema
     const topics = useMemo(
         () => Array.from(new Set(vocabulary.map(v => v.topic).filter((t): t is string => !!t))),
         [vocabulary]
     );
+    // Lista que realmente se pinta en el FlatList: si hay un tema seleccionado filtramos, si no mostramos todo el vocabulario
     const visibleVocabulary = useMemo(
         () => topicFilter ? vocabulary.filter(v => v.topic === topicFilter) : vocabulary,
         [vocabulary, topicFilter]
     );
 
+    // Cada vez que cambia el tipo de actividad filtrado recargamos el vocabulario de esa actividad desde el backend
     useEffect(() => {
         loadVocabulary();
     }, [filterActivityType]);
 
+    // Pide a ClubService el vocabulario del club para la actividad seleccionada y lo guarda en el estado
     const loadVocabulary = async () => {
         const targetClubId = route.params?.clubId || user?.organizationId;
         if (!targetClubId) {
@@ -72,6 +78,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Resetea el formulario del modal a sus valores por defecto (heredando el filtro de actividad actual) y lo abre en modo creacion
     const handleCreateTerm = () => {
         setEditingId(null);
         setNewTerm('');
@@ -84,6 +91,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
+    // Carga los datos del termino seleccionado en el formulario del modal para editarlo
     const handleEditTerm = (item: VocabularyTerm) => {
         setEditingId(item.id);
         setNewTerm(item.term);
@@ -96,8 +104,10 @@ export const VocabularyManagementScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
+    // Valida, arma el body y crea o actualiza el termino segun editingId; si el termino guardado pertenece a otra actividad lo retira de la lista visible
     const saveTerm = async () => {
         const isImageMode = modalContentType === 'image';
+        // En modo imagen exigimos URL de imagen; en modo texto exigimos el significado
         if (!newTerm.trim() || (isImageMode ? !newImageUrl.trim() : !newMeaning.trim())) {
             Alert.alert(t('common.error'), t('vocabulary.errorEmpty'));
             return;
@@ -109,6 +119,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
             return;
         }
 
+        // En modo imagen reutilizamos el termino como "significado" porque el campo meaning es obligatorio en el backend
         const body = {
             term: newTerm.trim(),
             meaning: isImageMode ? newTerm.trim() : newMeaning.trim(),
@@ -121,7 +132,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
 
         try {
             if (editingId) {
-                // UPDATE
+                // Edición: actualizamos el término existente; si tras el cambio queda fuera del filtro de actividad activo, lo retiramos de la lista visible
                 const res = await apiFetch(`/api/clubs/${targetClubId}/vocabulary/${editingId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -139,7 +150,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                     throw new Error(data.error);
                 }
             } else {
-                // CREATE
+                // Creación: insertamos el nuevo término al principio de la lista solo si pertenece a la actividad que estamos viendo
                 const res = await apiFetch(`/api/clubs/${targetClubId}/vocabulary`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -165,6 +176,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Borra un término de vocabulario, pidiendo confirmación nativa del navegador en web antes de llamar al backend
     const deleteTerm = async (vocabId: string) => {
         const targetClubId = route.params?.clubId || user?.organizationId;
         if (!targetClubId) return;
@@ -198,6 +210,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                 </View>
             </View>
 
+            {/* Pestañas para filtrar el vocabulario por tipo de actividad (recargan los datos vía el efecto de loadVocabulary) */}
             <View style={styles.filterTabsRow}>
                 {VOCAB_ACTIVITY_TYPE_OPTIONS.map(option => {
                     const isSelected = filterActivityType === option.value;
@@ -216,6 +229,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                 })}
             </View>
 
+            {/* Fila de chips para filtrar por tema; solo se muestra si el vocabulario cargado tiene algún tema definido */}
             {topics.length > 0 && (
                 <View style={styles.filterTabsRow}>
                     <TouchableOpacity
@@ -256,6 +270,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                     contentContainerStyle={styles.listContent}
                     renderItem={({ item }) => (
                         <View style={styles.card}>
+                            {/* En modo imagen mostramos la miniatura de la técnica; en modo texto mostramos el significado en su lugar */}
                             {item.contentType === 'image' && item.imageUrl && (
                                 <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" />
                             )}
@@ -267,6 +282,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                                 {!!item.topic && (
                                     <Text style={styles.topicBadge}>{item.topic}</Text>
                                 )}
+                                {/* El cinturón requerido solo tiene sentido para vocabulario de Taekwondo ITF */}
                                 {(item.activityType || 'taekwondo_itf') === 'taekwondo_itf' && (
                                     <View style={{ marginTop: 8, alignItems: 'flex-start' }}>
                                         <BeltDisplay rank={item.beltLevel || 0} width={100} height={12} showText={false} />
@@ -330,6 +346,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                             onChangeText={setNewTerm}
                         />
 
+                        {/* Formulario condicional: en modo imagen pedimos URL (con previsualización), en modo texto pedimos el significado */}
                         {modalContentType === 'image' ? (
                             <>
                                 <Text style={styles.label}>{t('vocabulary.imageUrlLabel', { defaultValue: 'URL de la imagen' })}</Text>
@@ -387,6 +404,7 @@ export const VocabularyManagementScreen = ({ route }: any) => {
                             })}
                         </View>
 
+                        {/* El selector de cinturón requerido solo aplica cuando el término pertenece a Taekwondo ITF */}
                         {modalActivityType === 'taekwondo_itf' && (
                             <>
                                 <Text style={styles.label}>{t('vocabulary.beltRequired')}</Text>

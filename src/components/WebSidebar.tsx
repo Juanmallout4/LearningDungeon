@@ -8,6 +8,8 @@ import { apiFetch } from '../utils/apiFetch';
 import { UserProfile } from '../types';
 import { useTranslation } from 'react-i18next';
 
+// Barra lateral de navegacion exclusiva para la version web en pantallas anchas (>768px): muestra
+// el usuario activo, los accesos segun su rol, el selector de idioma/tema y el formulario de soporte
 export const WebSidebar = () => {
     const { width } = useWindowDimensions();
     const { theme, toggleTheme } = useTheme();
@@ -18,7 +20,7 @@ export const WebSidebar = () => {
     const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
     const langs = ['es', 'en', 'fr', 'de', 'it', 'pt'];
     
-    // Support Modal State
+    // Estado del modal de contacto con soporte
     const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
     const [supportSubject, setSupportSubject] = useState('');
     const [supportDesc, setSupportDesc] = useState('');
@@ -36,7 +38,8 @@ export const WebSidebar = () => {
         };
         loadUser();
 
-        // Optional: Polling to catch login/logout since we don't have a global Context trigger yet
+        // Mientras no tengamos un Context global que avise de los cambios, comprobamos cada 2s
+        // si hubo un login/logout para mantener el usuario mostrado en la barra siempre actualizado
         const interval = setInterval(loadUser, 2000);
         return () => clearInterval(interval);
     }, []);
@@ -54,13 +57,13 @@ export const WebSidebar = () => {
             return route.name;
         };
 
-        // Initialize state
+        // Calculamos la ruta activa inicial para resaltar el item de menu correspondiente
         const state = navigation.getState();
         if (state) {
             setCurrentRouteName(getActiveRouteName(state));
         }
 
-        // Subscribe to changes
+        // Nos suscribimos a los cambios de navegacion para mantener el resaltado sincronizado
         const unsubscribe = navigation.addListener('state', (e: any) => {
             if (e && e.data && e.data.state) {
                 setCurrentRouteName(getActiveRouteName(e.data.state));
@@ -70,7 +73,8 @@ export const WebSidebar = () => {
         return unsubscribe;
     }, [navigation]);
 
-    // Only render on web when width > 768, and user is logged in
+    // Esta barra solo se muestra en web con ancho mayor a 768px y con sesion iniciada;
+    // en movil o con la sesion cerrada no renderizamos nada
     if (Platform.OS !== 'web' || width <= 768 || !user) {
         return null;
     }
@@ -242,7 +246,7 @@ export const WebSidebar = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Support Modal for Desktop */}
+            {/* Modal de contacto con soporte para la version de escritorio */}
             <Modal visible={isSupportModalOpen} transparent animationType="fade" onRequestClose={() => setIsSupportModalOpen(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>

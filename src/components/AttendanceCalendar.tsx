@@ -4,7 +4,7 @@ import { useTheme, AppTheme } from '../theme/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
-// Simple calendar component tailored for Learning Dungeon Attendance
+// Calendario sencillo para mostrar el historial de asistencia de Learning Dungeon
 interface AttendanceData {
     [dateString: string]: 'present' | 'absent' | 'late' | 'excused';
 }
@@ -18,7 +18,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ data }) 
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
-    // Internal state for the currently viewed month
+    // Guardamos el mes que se esta visualizando actualmente (navegable con los botones de flecha)
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const year = currentDate.getFullYear();
@@ -33,21 +33,21 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ data }) 
     };
 
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = domingo
 
-    // Adjust so Monday is the first day of the week (0 = Monday, 6 = Sunday)
+    // Convertimos para que la semana empiece en lunes (0 = lunes, 6 = domingo)
     const startingDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
 
-    const daysOfWeek = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // Consider localizing these
+    const daysOfWeek = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // Pendiente: localizar estas iniciales segun el idioma
 
     const renderDays = useMemo(() => {
         const days = [];
-        // Empty slots before the 1st
+        // Casillas vacias para alinear el dia 1 con su columna correspondiente
         for (let i = 0; i < startingDay; i++) {
             days.push(<View key={`empty-${i}`} style={styles.dayCell} />);
         }
 
-        // Actual days
+        // Pintamos cada dia del mes coloreando la celda segun el estado de asistencia (presente/ausente/tarde)
         for (let i = 1; i <= daysInMonth; i++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
             const status = data[dateStr];
@@ -158,7 +158,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontSize: 14,
     },
     dayPresent: {
-        backgroundColor: `${theme.colors.success}30`, // Faint green
+        backgroundColor: `${theme.colors.success}30`, // Verde tenue (30 = opacidad en hex)
         borderRadius: 20,
     },
     textPresent: {
@@ -166,7 +166,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontWeight: 'bold',
     },
     dayAbsent: {
-        backgroundColor: `${theme.colors.error}30`, // Faint red
+        backgroundColor: `${theme.colors.error}30`, // Rojo tenue
         borderRadius: 20,
     },
     textAbsent: {
@@ -174,7 +174,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontWeight: 'bold',
     },
     dayLate: {
-        backgroundColor: `${theme.colors.warning}30`, // Faint orange
+        backgroundColor: `${theme.colors.warning}30`, // Naranja tenue
         borderRadius: 20,
     },
     textLate: {

@@ -12,15 +12,18 @@ import { ClubService } from '../../services/ClubService';
 import { Group, GroupSession } from '../../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Convierte una hora en formato "HH:mm" a un objeto Date (con la fecha de hoy) para usarla en el selector de hora
 const timeStringToDate = (timeStr: string): Date => {
     const d = new Date();
     const [h, m] = (timeStr || '00:00').split(':');
     d.setHours(parseInt(h || '0', 10), parseInt(m || '0', 10), 0, 0);
     return d;
 };
+// Convierte un objeto Date de vuelta a un string "HH:mm" para guardarlo en el backend
 const dateToTimeString = (d: Date): string =>
     `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 
+// Construye el texto resumen de horarios que se muestra en la tarjeta del grupo: dias abreviados + franja horaria + aula/instructor
 const formatSessionsDisplay = (sessions: GroupSession[], daysShort: string[]): string => {
     if (!sessions?.length) return '';
     return sessions.map(s => {
@@ -39,6 +42,7 @@ interface SessionState {
     instructorId: string | null;
 }
 
+// Crea una sesion vacia para el formulario; si recibe la sesion anterior, copia sus horarios/aula/instructor pero reinicia los dias
 const makeDefaultSession = (prev?: SessionState): SessionState => {
     if (prev) {
         return { days: [], startTime: new Date(prev.startTime), endTime: new Date(prev.endTime), aulaId: prev.aulaId, instructorId: prev.instructorId };
@@ -50,9 +54,9 @@ const makeDefaultSession = (prev?: SessionState): SessionState => {
 
 type TimePickerTarget = { idx: number; field: 'startTime' | 'endTime' } | null;
 
-// Aula type
+// Tipo de aula/sala que el club puede gestionar y asignar a las sesiones de un grupo
 interface Aula { id: string; name: string; capacity?: number | null; description?: string | null; color?: string }
-// Instructor type (subset of what getInstructors returns)
+// Tipo de instructor (subconjunto de los datos que devuelve getInstructors), usado para asignarlo a una sesion
 interface Instructor { id: string; name: string; email: string }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,7 +72,7 @@ export const GroupListScreen = ({ route }: any) => {
     const [instructors, setInstructors] = useState<Instructor[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Create/Edit Modal state
+    // Estado del modal compartido para crear/editar/duplicar un grupo
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [deleteTargetGroup, setDeleteTargetGroup] = useState<Group | null>(null);
     const [editingGroup, setEditingGroup] = useState<Group | null>(null);
@@ -81,7 +85,7 @@ export const GroupListScreen = ({ route }: any) => {
     const [modalError, setModalError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Aulas management modal
+    // Estado del modal de gestion de aulas/salas (alta, edicion y borrado)
     const [isAulaModalVisible, setIsAulaModalVisible] = useState(false);
     const [aulaName, setAulaName] = useState('');
     const [aulaCapacity, setAulaCapacity] = useState('');
@@ -91,11 +95,13 @@ export const GroupListScreen = ({ route }: any) => {
     const [aulaSaving, setAulaSaving] = useState(false);
     const [aulaError, setAulaError] = useState<string | null>(null);
 
+    // Iniciales de los dias de la semana (L, M, X...) usadas tanto para mostrar horarios como para el selector de dias
     const daysShort = t('settings.daysShort', {
         returnObjects: true,
         defaultValue: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
     }) as string[];
 
+    // Si llegamos sin actividad valida, redirigimos al listado; si todo esta bien, cargamos los datos del club
     useEffect(() => {
         if (!activity || typeof activity !== 'object') {
             navigation.replace('ActivityList');
@@ -104,6 +110,7 @@ export const GroupListScreen = ({ route }: any) => {
         }
     }, [activity, navigation]);
 
+    // Trae en paralelo los grupos (filtrados por esta actividad), las aulas y los instructores de la organizacion
     const loadData = async () => {
         if (!user.organizationId) { setIsLoading(false); return; }
         try {
@@ -126,9 +133,11 @@ export const GroupListScreen = ({ route }: any) => {
 
     if (!activity || typeof activity !== 'object') return null;
 
+    // Solo el dueño del club puede crear/editar/duplicar/borrar grupos y gestionar aulas
     const isOwner = user.role === 'club_owner';
 
-    // ── Navigation ────────────────────────────────────────────────────────────
+    // ── Navegacion ────────────────────────────────────────────────────────────
+    // Segun el modo de entrada, lleva al instructor a pedir tecnica, pasar lista o evaluar (los alumnos no navegan desde aqui)
     const handleGroupPress = (group: Group) => {
         if (user.role === 'student') return;
         if (initialMode === 'technique') {
@@ -138,8 +147,10 @@ export const GroupListScreen = ({ route }: any) => {
         navigation.navigate('StudentList', { group, activityName: activity.name, activityId: activity.id, activityType: activity.activityType, user, initialMode });
     };
 
-    // ── Open modal: CREATE ────────────────────────────────────────────────────
+    // ── Abrir modal: CREAR ────────────────────────────────────────────────────
+    // Comprueba el limite de grupos por actividad segun el plan del club antes de dejar crear uno nuevo
     const handleCreateGroup = () => {
+        // Aqui configuramos cuantos grupos puede tener cada plan de club por actividad
         const maxGroupsPerActivity =
             user.plan === 'club_elite' ? 30 :
             user.plan === 'club_pro'   ? 15 :
@@ -153,16 +164,18 @@ export const GroupListScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
-    // ── Open modal: EDIT ──────────────────────────────────────────────────────
+    // ── Abrir modal: EDITAR ───────────────────────────────────────────────────
     const handleEditGroup = (group: Group) => {
         openModalForGroup(group, false);
     };
 
-    // ── Open modal: DUPLICATE ─────────────────────────────────────────────────
+    // ── Abrir modal: DUPLICAR ─────────────────────────────────────────────────
     const handleDuplicateGroup = (group: Group) => {
         openModalForGroup(group, true);
     };
 
+    // Precarga el formulario con los datos del grupo: si es duplicado, limpia el id y antepone "Copia de" al nombre;
+    // tambien reconstruye las sesiones a partir de "sessions" (si existe) o, si no, parsea el campo "time" heredado
     const openModalForGroup = (group: Group, isDuplicate: boolean) => {
         if (isDuplicate) {
             setEditingGroup(null);
@@ -175,6 +188,7 @@ export const GroupListScreen = ({ route }: any) => {
         setMinAgeInput(group.minAge ? group.minAge.toString() : '');
         setMaxAgeInput(group.maxAge ? group.maxAge.toString() : '');
 
+        // El campo "sessions" puede venir como array ya parseado o como string JSON (segun la fuente de datos); lo normalizamos aqui
         const rawSessions = group.sessions;
         const parsedSessions: GroupSession[] | null = (() => {
             if (!rawSessions) return null;
@@ -187,6 +201,7 @@ export const GroupListScreen = ({ route }: any) => {
         })();
 
         if (parsedSessions && parsedSessions.length > 0) {
+            // Tenemos sesiones estructuradas: las convertimos al formato del formulario (horas como Date para el picker)
             setSessionInputs(parsedSessions.map(s => ({
                 days: Array.isArray(s.days) ? s.days : [],
                 startTime: timeStringToDate(s.startTime || '17:00'),
@@ -195,6 +210,7 @@ export const GroupListScreen = ({ route }: any) => {
                 instructorId: s.instructorId || null,
             })));
         } else {
+            // Compatibilidad con grupos antiguos sin "sessions": deducimos dias y hora a partir del texto libre del campo "time"
             const parts = (group.time || '').split(' ');
             const timePart = parts[parts.length - 1] || '17:00';
             const daysPart = parts.slice(0, -1).join(' ');
@@ -208,9 +224,11 @@ export const GroupListScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
-    // ── Delete ────────────────────────────────────────────────────────────────
+    // ── Borrar ────────────────────────────────────────────────────────────────
+    // Solo marca el grupo objetivo; el modal de confirmacion es el que dispara el borrado real
     const handleDeleteGroup = (group: Group) => setDeleteTargetGroup(group);
 
+    // Confirma el borrado: llama al servicio, quita el grupo de la lista local y cierra el modal de confirmacion
     const confirmDeleteGroup = async () => {
         if (!deleteTargetGroup) return;
         const group = deleteTargetGroup;
@@ -223,13 +241,15 @@ export const GroupListScreen = ({ route }: any) => {
         }
     };
 
-    // ── Session helpers ───────────────────────────────────────────────────────
+    // ── Helpers de sesiones ───────────────────────────────────────────────────
+    // Añade una nueva sesion al formulario, copiando horario/aula/instructor de la ultima sesion como punto de partida
     const addSession = () => {
         const last = sessionInputs[sessionInputs.length - 1];
         setSessionInputs(prev => [...prev, makeDefaultSession(last)]);
     };
     const removeSession = (idx: number) => setSessionInputs(prev => prev.filter((_, i) => i !== idx));
 
+    // Activa/desactiva un dia de la semana para una sesion concreta del formulario
     const toggleSessionDay = (sessionIdx: number, dayIdx: number) => {
         setSessionInputs(prev => prev.map((s, i) => {
             if (i !== sessionIdx) return s;
@@ -240,18 +260,22 @@ export const GroupListScreen = ({ route }: any) => {
         }));
     };
 
+    // Actualiza la hora de inicio o fin de una sesion concreta del formulario
     const updateSessionTime = (sessionIdx: number, field: 'startTime' | 'endTime', date: Date) => {
         setSessionInputs(prev => prev.map((s, i) => i === sessionIdx ? { ...s, [field]: date } : s));
     };
 
+    // Asigna (o quita) el aula seleccionada a una sesion concreta del formulario
     const updateSessionAula = (sessionIdx: number, aulaId: string | null) => {
         setSessionInputs(prev => prev.map((s, i) => i === sessionIdx ? { ...s, aulaId } : s));
     };
 
+    // Asigna (o quita) el instructor seleccionado a una sesion concreta del formulario
     const updateSessionInstructor = (sessionIdx: number, instructorId: string | null) => {
         setSessionInputs(prev => prev.map((s, i) => i === sessionIdx ? { ...s, instructorId } : s));
     };
 
+    // Maneja el cambio de hora del DateTimePicker nativo; en Android cierra el picker tras elegir (o si se cancela)
     const onNativeTimeChange = (event: any, selectedDate?: Date) => {
         if (!activeTimePicker) return;
         if (Platform.OS === 'android') {
@@ -261,7 +285,8 @@ export const GroupListScreen = ({ route }: any) => {
         if (selectedDate) updateSessionTime(activeTimePicker.idx, activeTimePicker.field, selectedDate);
     };
 
-    // ── Save (create or update) ───────────────────────────────────────────────
+    // ── Guardar (crear o actualizar) ──────────────────────────────────────────
+    // Valida el formulario, arma el payload de sesiones (resolviendo nombres de aula/instructor) y crea o actualiza el grupo
     const saveGroup = async () => {
         setModalError(null);
 
@@ -280,6 +305,8 @@ export const GroupListScreen = ({ route }: any) => {
 
         setIsSaving(true);
         try {
+            // Convertimos cada sesion del formulario al formato que espera el backend: dias ordenados, horas como string
+            // y resolvemos aulaName/instructorName a partir del id para guardar tambien el nombre legible
             const sessionsData: GroupSession[] = sessionInputs.map(s => {
                 const aula = aulas.find(a => a.id === s.aulaId);
                 const instructor = instructors.find(i => i.id === s.instructorId);
@@ -294,6 +321,7 @@ export const GroupListScreen = ({ route }: any) => {
                 };
             });
 
+            // Generamos el texto resumen de horarios (para mostrar en la lista) y normalizamos los campos numericos opcionales
             const timeDisplay = formatSessionsDisplay(sessionsData, daysShort);
             const maxStudentsVal = maxStudentsInput.trim() !== '' ? parseInt(maxStudentsInput, 10) : null;
             const minAgeVal = minAgeInput.trim() !== '' ? parseInt(minAgeInput, 10) : null;
@@ -305,6 +333,7 @@ export const GroupListScreen = ({ route }: any) => {
                     modalName, timeDisplay, maxStudentsVal, sessionsData, minAgeVal, maxAgeVal
                 );
                 if (updated) {
+                    // Sustituimos el grupo actualizado en la lista local, conservando el contador de alumnos que ya teniamos
                     setGroups(prev => prev.map(g =>
                         g.id === updated.id ? { ...updated, studentCount: g.studentCount } : g
                     ));
@@ -318,6 +347,7 @@ export const GroupListScreen = ({ route }: any) => {
             }
             closeModal();
         } catch (error: any) {
+            // Si el error parece de autenticacion/token mostramos un mensaje especifico invitando a reiniciar sesion
             const msg: string = error.message || '';
             if (msg.toLowerCase().includes('authentication') || msg.toLowerCase().includes('token')) {
                 setModalError('Tu sesión ha expirado. Cierra sesión e inicia sesión de nuevo para continuar.');
@@ -329,6 +359,7 @@ export const GroupListScreen = ({ route }: any) => {
         }
     };
 
+    // Restaura el formulario del modal de grupo a sus valores iniciales (se usa al cerrar o al abrir en modo creacion)
     const resetModal = () => {
         setEditingGroup(null);
         setModalName('');
@@ -341,15 +372,17 @@ export const GroupListScreen = ({ route }: any) => {
     };
     const closeModal = () => { setIsModalVisible(false); resetModal(); };
 
-    // ── Aulas management ─────────────────────────────────────────────────────
+    // ── Gestion de aulas ──────────────────────────────────────────────────────
     const openAulaModal = () => {
         resetAulaForm();
         setIsAulaModalVisible(true);
     };
+    // Limpia el formulario de aula a sus valores por defecto (color azul, sin aula en edicion)
     const resetAulaForm = () => {
         setAulaName(''); setAulaCapacity(''); setAulaDescription('');
         setAulaColor('#3182CE'); setEditingAula(null); setAulaError(null);
     };
+    // Precarga el formulario con los datos del aula seleccionada para editarla
     const editAula = (aula: Aula) => {
         setEditingAula(aula);
         setAulaName(aula.name);
@@ -358,6 +391,7 @@ export const GroupListScreen = ({ route }: any) => {
         setAulaColor(aula.color || '#3182CE');
         setAulaError(null);
     };
+    // Guarda el aula: si veniamos editando actualiza la existente en el array local, si no, crea una nueva y la añade al final
     const saveAula = async () => {
         if (!aulaName.trim()) { setAulaError('El nombre del aula es obligatorio.'); return; }
         setAulaSaving(true);
@@ -378,6 +412,7 @@ export const GroupListScreen = ({ route }: any) => {
             setAulaSaving(false);
         }
     };
+    // Elimina el aula del backend y de la lista local; si estaba siendo editada, reinicia tambien el formulario
     const deleteAula = async (aula: Aula) => {
         try {
             await ClubService.deleteAula(user.organizationId, aula.id);
@@ -388,7 +423,8 @@ export const GroupListScreen = ({ route }: any) => {
         }
     };
 
-    // ── Time picker renderer ──────────────────────────────────────────────────
+    // ── Selector de hora ──────────────────────────────────────────────────────
+    // En web usamos un <input type="time"> nativo del navegador; en movil mostramos un boton que abre el DateTimePicker
     const renderTimePicker = (sessionIdx: number, field: 'startTime' | 'endTime') => {
         const timeValue = sessionInputs[sessionIdx]?.[field];
         if (!timeValue) return null;
@@ -438,7 +474,8 @@ export const GroupListScreen = ({ route }: any) => {
         );
     };
 
-    // ── Aula picker renderer per session ─────────────────────────────────────
+    // ── Selector de aula por sesion ───────────────────────────────────────────
+    // En web mostramos un <select> nativo; en movil, como no hay un picker estandar para esto, ciclamos las opciones al tocar
     const renderAulaPicker = (sessionIdx: number) => {
         const current = sessionInputs[sessionIdx]?.aulaId;
         if (Platform.OS === 'web') {
@@ -461,7 +498,7 @@ export const GroupListScreen = ({ route }: any) => {
                 </select>
             );
         }
-        // Native fallback: simple touchable cycling
+        // En movil: alternativa simple, cada toque avanza al siguiente aula de la lista (incluyendo "sin sala" al final del ciclo)
         const currentAula = aulas.find(a => a.id === current);
         return (
             <TouchableOpacity
@@ -480,7 +517,8 @@ export const GroupListScreen = ({ route }: any) => {
         );
     };
 
-    // ── Instructor picker renderer per session ───────────────────────────────
+    // ── Selector de instructor por sesion ─────────────────────────────────────
+    // Misma logica que el selector de aula: <select> en web, ciclo de opciones al tocar en movil
     const renderInstructorPicker = (sessionIdx: number) => {
         const current = sessionInputs[sessionIdx]?.instructorId;
         if (Platform.OS === 'web') {
@@ -524,7 +562,7 @@ export const GroupListScreen = ({ route }: any) => {
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <View style={styles.container}>
-            {/* Header */}
+            {/* Cabecera: boton de volver, nombre de la actividad, y accesos a gestion de aulas / crear grupo segun el rol */}
             <View style={styles.header}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -549,7 +587,7 @@ export const GroupListScreen = ({ route }: any) => {
                 </View>
             </View>
 
-            {/* List */}
+            {/* Listado de grupos de la actividad, con spinner mientras carga y mensaje si esta vacio */}
             {isLoading ? (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -568,6 +606,7 @@ export const GroupListScreen = ({ route }: any) => {
                         </View>
                     }
                     renderItem={({ item }) => {
+                        // Si el grupo tiene sesiones estructuradas las formateamos para mostrar; si no, usamos el texto libre heredado
                         const displayTime = item.sessions?.length
                             ? formatSessionsDisplay(item.sessions, daysShort)
                             : (item.time || '');
@@ -632,7 +671,7 @@ export const GroupListScreen = ({ route }: any) => {
                 />
             )}
 
-            {/* ── Delete confirmation Modal ── */}
+            {/* ── Modal de confirmacion de borrado ── */}
             <Modal visible={deleteTargetGroup !== null} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { maxWidth: 400, alignSelf: 'center', width: '100%' }]}>
@@ -658,7 +697,7 @@ export const GroupListScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* ── Aulas management Modal ── */}
+            {/* ── Modal de gestion de aulas ── */}
             <Modal visible={isAulaModalVisible} transparent animationType="slide" onRequestClose={() => setIsAulaModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { maxWidth: 520, alignSelf: 'center', width: '100%' }]}>
@@ -667,7 +706,7 @@ export const GroupListScreen = ({ route }: any) => {
                             <Text style={styles.modalTitle}>Gestionar Salas / Aulas</Text>
                         </View>
 
-                        {/* Existing aulas */}
+                        {/* Listado de aulas ya creadas; al pulsar editar se resalta la fila y se precarga el formulario de abajo */}
                         <ScrollView style={{ maxHeight: 220, marginBottom: 16 }}>
                             {aulas.length === 0 ? (
                                 <Text style={{ color: theme.colors.textSecondary, fontStyle: 'italic', textAlign: 'center', padding: 16 }}>
@@ -693,7 +732,7 @@ export const GroupListScreen = ({ route }: any) => {
                             )}
                         </ScrollView>
 
-                        {/* Add / Edit form */}
+                        {/* Formulario de alta/edicion de aula: nombre, capacidad, descripcion y color identificativo */}
                         <View style={[styles.sessionCard, { backgroundColor: theme.colors.background }]}>
                             <Text style={styles.sectionHeader}>{editingAula ? 'Editar aula' : 'Nueva aula'}</Text>
                             <TextInput
@@ -720,7 +759,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     onChangeText={setAulaDescription}
                                 />
                             </View>
-                            {/* Color picker — web uses native color input, native fallback with presets */}
+                            {/* Selector de color: en web usamos el input nativo "color"; en movil, una paleta de colores predefinidos */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
                                 <Text style={styles.label}>Color:</Text>
                                 {Platform.OS === 'web' ? (
@@ -768,7 +807,7 @@ export const GroupListScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* ── Edit/Create Modal ── */}
+            {/* ── Modal de crear/editar grupo ── */}
             <Modal visible={isModalVisible} transparent animationType="slide" onRequestClose={closeModal}>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                     <View style={styles.modalOverlay}>
@@ -780,7 +819,7 @@ export const GroupListScreen = ({ route }: any) => {
                                         : t('settings.newGroup', { defaultValue: 'Nuevo Grupo' })}
                                 </Text>
 
-                                {/* Name */}
+                                {/* Nombre del grupo */}
                                 <TextInput
                                     style={styles.input}
                                     placeholder={t('settings.groupName', { defaultValue: 'Nombre del grupo' })}
@@ -789,7 +828,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     onChangeText={v => { setModalName(v); setModalError(null); }}
                                 />
 
-                                {/* ── Sessions ── */}
+                                {/* ── Sesiones / Horario: el grupo puede tener varias sesiones, cada una con sus dias, hora, aula e instructor ── */}
                                 <Text style={styles.sectionHeader}>
                                     {t('settings.sessions', { defaultValue: 'Sesiones / Horario' })}
                                 </Text>
@@ -807,7 +846,7 @@ export const GroupListScreen = ({ route }: any) => {
                                             )}
                                         </View>
 
-                                        {/* Days */}
+                                        {/* Selector de dias de la semana en los que se imparte esta sesion */}
                                         <Text style={styles.label}>{t('settings.daysLabel', { defaultValue: 'Días' })}</Text>
                                         <View style={styles.daysContainer}>
                                             {daysShort.map((day, dayIdx) => {
@@ -824,7 +863,7 @@ export const GroupListScreen = ({ route }: any) => {
                                             })}
                                         </View>
 
-                                        {/* Start / End */}
+                                        {/* Hora de inicio / fin de la sesion */}
                                         <View style={styles.timeRow}>
                                             <View style={styles.timeBlock}>
                                                 <Text style={styles.label}>{t('settings.startTime', { defaultValue: 'Inicio' })}</Text>
@@ -839,7 +878,7 @@ export const GroupListScreen = ({ route }: any) => {
                                             </View>
                                         </View>
 
-                                        {/* Aula / Room picker */}
+                                        {/* Selector de aula/sala: solo se muestra si el club tiene aulas registradas */}
                                         {aulas.length > 0 && (
                                             <View style={{ marginTop: 8 }}>
                                                 <Text style={styles.label}>
@@ -849,7 +888,7 @@ export const GroupListScreen = ({ route }: any) => {
                                             </View>
                                         )}
 
-                                        {/* Instructor picker */}
+                                        {/* Selector de instructor: solo se muestra si el club tiene instructores registrados */}
                                         {instructors.length > 0 && (
                                             <View style={{ marginTop: 8 }}>
                                                 <Text style={styles.label}>
@@ -861,7 +900,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     </View>
                                 ))}
 
-                                {/* Android time picker */}
+                                {/* En Android el DateTimePicker se muestra como dialogo flotante fuera del flujo normal del formulario */}
                                 {Platform.OS === 'android' && activeTimePicker && sessionInputs[activeTimePicker.idx] && (
                                     <DateTimePicker
                                         value={sessionInputs[activeTimePicker.idx][activeTimePicker.field]}
@@ -870,7 +909,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     />
                                 )}
 
-                                {/* Add session */}
+                                {/* Boton para añadir otra sesion al grupo (mismo grupo, distinto horario/dias) */}
                                 <TouchableOpacity style={styles.addSessionButton} onPress={addSession}>
                                     <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
                                     <Text style={styles.addSessionText}>
@@ -878,7 +917,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     </Text>
                                 </TouchableOpacity>
 
-                                {/* ── Age range ── */}
+                                {/* ── Rango de edad opcional para restringir quien puede apuntarse al grupo ── */}
                                 <Text style={styles.sectionHeader}>{t('settings.ageRange', { defaultValue: 'Rango de edad (opcional)' })}</Text>
                                 <View style={styles.ageRow}>
                                     <View style={styles.ageBlock}>
@@ -910,7 +949,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     </View>
                                 </View>
 
-                                {/* ── Max students ── */}
+                                {/* ── Limite opcional de alumnos en el grupo (vacio = sin limite) ── */}
                                 <Text style={styles.label}>{t('settings.maxStudents', { defaultValue: 'Máx. alumnos (opcional)' })}</Text>
                                 <TextInput
                                     style={styles.input}
@@ -922,7 +961,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     maxLength={4}
                                 />
 
-                                {/* Inline error (replaces Alert.alert) */}
+                                {/* Mensaje de error embebido en el formulario (en vez de un Alert.alert emergente) */}
                                 {modalError && (
                                     <View style={styles.errorBox}>
                                         <Ionicons name="alert-circle" size={16} color={theme.colors.error} style={{ marginRight: 6 }} />
@@ -930,7 +969,7 @@ export const GroupListScreen = ({ route }: any) => {
                                     </View>
                                 )}
 
-                                {/* Buttons */}
+                                {/* Botones de cancelar / guardar; mientras se guarda mostramos un spinner en vez del texto */}
                                 <View style={styles.modalButtons}>
                                     <TouchableOpacity style={styles.cancelButton} onPress={closeModal}>
                                         <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>

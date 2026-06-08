@@ -50,7 +50,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
     const [supportLoading, setSupportLoading] = React.useState(false);
 
     const handleSupportTicket = () => {
-        // Assume devRole is fetched inside user profile 'devRole'
+        // Si el usuario es superadmin (campo devRole del perfil) le llevamos directo al panel de soporte interno
         if ((user as any).devRole === 'superadmin') {
             navigation.navigate('AdminSupport' as never);
         } else {
@@ -102,7 +102,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
 
     return (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Profile Section Navigation */}
+            {/* Acceso a la seccion de perfil */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>{t('settings.myProfile')}</Text>
                 <TouchableOpacity
@@ -114,7 +114,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
                 </TouchableOpacity>
             </View>
 
-            {/* Instructor / Student Classes Panel */}
+            {/* Panel de clases para instructores y alumnos */}
             {(user.role === 'instructor' || user.role === 'club_owner' || user.role === 'student') && (
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>
@@ -148,7 +148,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
                 </View>
             )}
 
-            {/* Owner Panel Section - ONLY for Club Owners */}
+            {/* Seccion del panel de administracion — solo visible para los dueños de club */}
             {user.role === 'club_owner' && (
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>{t('settings.ownerPanel', { defaultValue: 'Owner Panel' })}</Text>
@@ -171,7 +171,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
                 </View>
             )}
 
-            {/* Subscriptions & Payments Section - Visible to all */}
+            {/* Seccion de suscripciones y pagos — visible para todos los roles */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>{t('settings.subscriptionsAndPayments', { defaultValue: 'Subscriptions & Payments' })}</Text>
                 <TouchableOpacity style={styles.premiumCard} onPress={() => navigation.navigate('Subscription' as never)}>
@@ -180,7 +180,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
                 </TouchableOpacity>
             </View>
 
-            {/* Navigation specifically for Web so they can go to HOME if they are not there */}
+            {/* Acceso directo a "Inicio" pensado para la version web, por si el usuario no esta ya alli */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>{t('navigation.practice', { defaultValue: 'Practice' })}</Text>
                 <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Home', { user })}>
@@ -198,7 +198,7 @@ export const MenuContent = ({ user, onLogout }: MenuContentProps) => {
                 </TouchableOpacity>
             </View>
 
-            {/* Support and Language */}
+            {/* Soporte e idioma */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>{t('settings.support')}</Text>
 

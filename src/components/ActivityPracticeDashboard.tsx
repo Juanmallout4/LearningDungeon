@@ -16,6 +16,7 @@ interface ActivityPracticeDashboardProps {
     onPlayPress: () => void;
 }
 
+// Forma de una evaluacion por categorias tal y como la devuelve TrackingService.getEvaluations
 interface CategoryEvaluation {
     evaluationType: string;
     activityType: string;
@@ -40,9 +41,12 @@ export const ActivityPracticeDashboard: React.FC<ActivityPracticeDashboardProps>
     const [lastEvaluation, setLastEvaluation] = useState<CategoryEvaluation | null | undefined>(undefined);
 
     useEffect(() => {
+        // Bandera para evitar actualizar el estado si el componente se desmonta antes de que llegue la respuesta
         let cancelled = false;
         const loadLastEvaluation = async () => {
             try {
+                // Pedimos todas las evaluaciones del usuario y nos quedamos con la ultima evaluacion
+                // de tipo "category" que corresponda a esta actividad concreta
                 const evaluations = await TrackingService.getEvaluations(userId);
                 const match = (evaluations || []).find((e: CategoryEvaluation) =>
                     e.evaluationType === 'category' && e.activityType === activityType);
@@ -56,6 +60,7 @@ export const ActivityPracticeDashboard: React.FC<ActivityPracticeDashboardProps>
         return () => { cancelled = true; };
     }, [userId, activityType]);
 
+    // Tabla de criterios de evaluacion para esta actividad (etiquetas legibles por categoria)
     const rubric = EVALUATION_RUBRICS[activityType] || [];
 
     return (
@@ -79,6 +84,7 @@ export const ActivityPracticeDashboard: React.FC<ActivityPracticeDashboardProps>
                     <View>
                         <Text style={styles.evalDate}>{lastEvaluation.date}</Text>
                         {(lastEvaluation.categoryScores || []).map((cat, idx) => {
+                            // Traducimos la clave de categoria a su etiqueta legible usando la rubrica; si no existe, mostramos la clave tal cual
                             const label = rubric.find(c => c.key === cat.categoryKey)?.label || cat.categoryKey;
                             return (
                                 <View key={idx} style={styles.categoryRow}>

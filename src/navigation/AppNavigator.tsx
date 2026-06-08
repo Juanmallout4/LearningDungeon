@@ -39,6 +39,9 @@ import { InventoryScreen } from '../screens/InventoryScreen';
 
 const Stack = createNativeStackNavigator();
 
+// Aqui registramos todas las pantallas de la app dentro de un unico stack de navegacion: comprobamos
+// si ya existe una sesion guardada para decidir si arrancamos en "Login" o directamente en "Home",
+// y envolvemos cada pantalla protegida con withAuth para exigir un usuario autenticado
 export const AppNavigator = () => {
     const { theme } = useTheme();
     const [isAppReady, setIsAppReady] = useState(false);
@@ -46,6 +49,8 @@ export const AppNavigator = () => {
     const [initialUser, setInitialUser] = useState<UserProfile | null>(null);
 
     useEffect(() => {
+        // Al arrancar, comprobamos si hay un usuario guardado de una sesion anterior: si lo hay,
+        // saltamos directamente a "Home" con sus datos precargados; si no, empezamos en "Login"
         const checkLogin = async () => {
             const user = await AuthService.getSavedUser();
             if (user) {
@@ -103,7 +108,7 @@ export const AppNavigator = () => {
                     <Stack.Screen name="AdminSupport" component={withAuth(AdminSupportScreen)} />
                     <Stack.Screen name="ChestManagement" component={withAuth(ChestManagementScreen)} />
 
-                    {/* Instructor Screens */}
+                    {/* Pantallas del rol instructor */}
                     <Stack.Screen name="ActivityList" component={withAuth(ActivityListScreen)} />
                     <Stack.Screen name="GroupList" component={withAuth(GroupListScreen)} />
                     <Stack.Screen name="StudentList" component={withAuth(StudentListScreen)} />

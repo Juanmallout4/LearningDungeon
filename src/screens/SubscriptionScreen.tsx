@@ -12,17 +12,23 @@ export const SubscriptionScreen = () => {
     const { theme } = useTheme();
     const { t } = useTranslation();
     const styles = createStyles(theme);
+    // Lista de planes disponibles, obtenida del servicio (probablemente desde backend o configuracion remota)
     const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
-    const [purchasing, setPurchasing] = useState<string | null>(null); // ID of plan being purchased
+    // Guarda el id del plan que se esta comprando ahora mismo (o 'ad_removal'); permite mostrar el spinner solo en ese boton y bloquear el resto
+    const [purchasing, setPurchasing] = useState<string | null>(null);
+    // Controla la visibilidad y el importe mostrado en el modal de pago simulado
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
+    // Guardamos la accion a ejecutar (compra de plan o de eliminacion de anuncios) para lanzarla cuando el modal confirme el pago
     const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
+    // Cargamos los planes una sola vez al montar la pantalla
     useEffect(() => {
         loadPlans();
     }, []);
 
+    // Pide los planes al servicio de suscripciones; si falla, mostramos una alerta traducida y dejamos de cargar
     const loadPlans = async () => {
         try {
             const data = await SubscriptionService.getPlans();
@@ -34,6 +40,8 @@ export const SubscriptionScreen = () => {
         }
     };
 
+    // Prepara la compra de un plan: guarda el importe y encapsula la logica real de compra como "accion pendiente"
+    // que se disparara solo si el usuario confirma el pago en el modal (evita cobrar antes de la confirmacion)
     const handlePurchase = async (plan: Plan) => {
         setPaymentAmount(plan.price);
         setPendingAction(() => async () => {
@@ -57,6 +65,7 @@ export const SubscriptionScreen = () => {
         setPaymentModalVisible(true);
     };
 
+    // Restaura compras previas (relevante en iOS/Android para no duplicar cobros) y avisa del resultado
     const handleRestore = async () => {
         setLoading(true);
         await SubscriptionService.restorePurchases();
@@ -64,6 +73,8 @@ export const SubscriptionScreen = () => {
         Alert.alert(t('subscription.restoreTitle'), t('subscription.restoreSuccess'));
     };
 
+    // Igual que handlePurchase pero para la compra unica de "sin anuncios"; de momento simula la espera de pago
+    // con un timeout (no hay integracion real con backend/almacenamiento persistente todavia)
     const handlePurchaseAdRemoval = async () => {
         setPaymentAmount('€10.00');
         setPendingAction(() => async () => {
@@ -71,13 +82,12 @@ export const SubscriptionScreen = () => {
             setPaymentModalVisible(false);
             try {
                 await new Promise(resolve => setTimeout(resolve, 1500));
-                // Simulate successful purchase
+                // Simulamos una compra exitosa (pendiente de conectar con el backend real)
                 Alert.alert(
                     t('subscription.removeAdsSuccessTitle', { defaultValue: 'Cero Anuncios' }),
                     t('subscription.removeAdsSuccessDesc', { defaultValue: 'Has desbloqueado la versión sin anuncios de forma permanente.' }),
                     [{ text: 'OK', onPress: () => navigation.goBack() }]
                 );
-                // In a real app we would update the backend/AsyncStorage here
             } catch (error) {
                 Alert.alert(t('common.error', { defaultValue: 'Error' }), t('subscription.errorProcess'));
             } finally {
@@ -87,6 +97,7 @@ export const SubscriptionScreen = () => {
         setPaymentModalVisible(true);
     };
 
+    // Mientras se cargan los planes mostramos solo un spinner centrado, sin renderizar el resto de la pantalla
     if (loading) {
         return (
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -110,8 +121,11 @@ export const SubscriptionScreen = () => {
                     {t('subscription.subtitle')}
                 </Text>
 
+                {/* Recorremos los planes recibidos del servicio; cada texto intenta traducirse por id de plan
+                    y cae al valor por defecto del propio plan si no existe traduccion especifica */}
                 {plans.map((plan) => (
                     <View key={plan.id} style={[styles.planCard, plan.recommended && styles.recommendedCard]}>
+                        {/* La insignia de "recomendado" y el resaltado del borde solo aparecen en el plan marcado como tal */}
                         {plan.recommended && (
                             <View style={styles.recommendedBadge}>
                                 <Text style={styles.recommendedText}>{t('subscription.recommended')}</Text>
@@ -138,6 +152,7 @@ export const SubscriptionScreen = () => {
                             onPress={() => handlePurchase(plan)}
                             disabled={purchasing !== null}
                         >
+                            {/* Mostramos el spinner solo en el boton del plan que se esta comprando; el resto queda deshabilitado */}
                             {purchasing === plan.id ? (
                                 <ActivityIndicator color={plan.recommended ? theme.colors.background : theme.colors.text} />
                             ) : (
@@ -149,6 +164,7 @@ export const SubscriptionScreen = () => {
                     </View>
                 ))}
 
+                {/* Compra unica (no recurrente) para eliminar anuncios permanentemente */}
                 <View style={styles.adRemovalCard}>
                     <View style={styles.planHeader}>
                         <View style={{ flex: 1 }}>

@@ -12,6 +12,8 @@ interface PaymentModalProps {
     onSuccess: () => void;
 }
 
+// Modal de pago "simulado": recoge los datos de la tarjeta, finge una llamada a una pasarela de pago
+// (con una espera de 2 segundos) y, si todo va bien, avisa al padre con onSuccess para que complete la compra
 export const PaymentModal: React.FC<PaymentModalProps> = ({ visible, amount, onClose, onSuccess }) => {
     const { theme } = useTheme();
     const { t } = useTranslation();
@@ -31,14 +33,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ visible, amount, onC
 
         setProcessing(true);
         try {
-            // Simulate API request to payment gateway
+            // Aqui simulamos la peticion a la pasarela de pago esperando 2 segundos antes de continuar
             await new Promise(resolve => setTimeout(resolve, 2000));
             onSuccess();
         } catch (error) {
             Alert.alert(t('common.error', { defaultValue: 'Error' }), t('subscription.paymentErrorProcess', { defaultValue: 'Payment failed to process' }));
         } finally {
             setProcessing(false);
-            // Reset fields
+            // Limpiamos el formulario para que quede listo si se vuelve a abrir el modal
             setCardNumber('');
             setExpiry('');
             setCvv('');

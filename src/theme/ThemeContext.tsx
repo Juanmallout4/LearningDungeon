@@ -4,9 +4,10 @@ import { useColorScheme, Appearance, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightColors, darkColors, typography, spacing, borderRadius } from './index';
 
-// Type definitions for our Theme
+// Tipo de la paleta de colores activa (deriva su forma de lightColors, que tiene las mismas claves que darkColors)
 export type ThemeColors = typeof lightColors;
 
+// Forma del tema completo expuesto a los componentes: colores activos + escalas de tipografía/espaciado/bordes + flag isDark
 export interface AppTheme {
     colors: ThemeColors;
     typography: typeof typography;
@@ -15,7 +16,7 @@ export interface AppTheme {
     isDark: boolean;
 }
 
-// Initial default theme (fallback)
+// Tema por defecto (oscuro) que se usa como valor inicial del contexto antes de que el provider monte
 const defaultTheme: AppTheme = {
     colors: darkColors,
     typography,
@@ -24,7 +25,8 @@ const defaultTheme: AppTheme = {
     isDark: true,
 };
 
-// Create Context
+// Contexto de tema: expone el tema activo y la función para alternar entre claro/oscuro.
+// Si no hay provider montado, toggleTheme solo emite un warning (valor de seguridad)
 const ThemeContext = createContext<{
     theme: AppTheme;
     toggleTheme: () => void;
@@ -33,22 +35,24 @@ const ThemeContext = createContext<{
     toggleTheme: () => { console.warn('Theme provider not found'); }
 });
 
-// Custom Hook
+// Hook de acceso: devuelve { theme, toggleTheme } del contexto más cercano
 export const useTheme = () => useContext(ThemeContext);
 
-// Provider Component
+// Proveedor del tema: decide si usar claro u oscuro combinando la preferencia del sistema operativo
+// con una posible elección manual guardada por el usuario, y construye el objeto de tema final
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const systemColorScheme = useColorScheme();
 
-    // Initialize based on Appearance directly as well to be safe
+    // Inicializamos también desde Appearance directamente por seguridad (algunos entornos tardan en reportar el esquema)
     const [isDark, setIsDark] = useState(
         systemColorScheme === 'dark' || Appearance.getColorScheme() === 'dark'
     );
+    // true si el usuario eligió manualmente un tema (en ese caso ignoramos los cambios del sistema)
     const [hasManualOverride, setHasManualOverride] = useState(false);
 
     const [isThemeReady, setIsThemeReady] = useState(false);
 
-    // Initialize from storage
+    // Carga la preferencia guardada en AsyncStorage (clave 'app-theme'); si existe, marca que hay override manual
     useEffect(() => {
         const loadTheme = async () => {
             try {
@@ -66,14 +70,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loadTheme();
     }, []);
 
-    // Listen for system theme changes ONLY if no manual override and theme is ready
+    // Sincroniza con los cambios de esquema del sistema, pero solo si el usuario no ha elegido manualmente
+    // y la preferencia guardada ya se cargó (para no pisar la elección manual al arrancar)
     useEffect(() => {
         if (isThemeReady && !hasManualOverride) {
             setIsDark(systemColorScheme === 'dark');
         }
     }, [systemColorScheme, hasManualOverride, isThemeReady]);
 
-    // Also listen via Appearance API for Android robustness
+    // Suscripción adicional vía Appearance API (más fiable en Android para detectar el cambio en caliente)
     useEffect(() => {
         const subscription = Appearance.addChangeListener(({ colorScheme }) => {
             if (isThemeReady && !hasManualOverride) {
@@ -83,6 +88,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return () => subscription.remove();
     }, [hasManualOverride, isThemeReady]);
 
+    // Alterna manualmente entre claro/oscuro, marca el override y persiste la elección en AsyncStorage
     const toggleTheme = async () => {
         const newValue = !isDark;
         setIsDark(newValue);
@@ -94,12 +100,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
     };
 
-    // Sync theme to root HTML tag on Web for CSS variables / scrollbars
+    // En web, sincroniza el atributo data-theme del <html> raíz (para variables CSS) e inyecta
+    // estilos de scrollbar dependientes del tema dinámicamente, evitando problemas con el bundler de CSS estático
     useEffect(() => {
         if (Platform.OS === 'web' && typeof document !== 'undefined') {
             document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
 
-            // Dynamically inject scrollbar styles to avoid bundler CSS issues
             const styleId = 'Learning Dungeon-dynamic-scrollbars';
             let styleEl = document.getElementById(styleId);
 
@@ -125,7 +131,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const activeColors = isDark ? darkColors : lightColors;
 
-    // Inject dynamic colors into typography
+    // Inyecta el color de texto correspondiente en cada variante tipográfica según el tema activo
     const dynamicTypography = {
         header: { ...typography.header, color: activeColors.text },
         subheader: { ...typography.subheader, color: activeColors.text },

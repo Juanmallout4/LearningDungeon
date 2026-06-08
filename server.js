@@ -16,18 +16,19 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 8080;
 
-// ─── Plan limits (single source of truth) ────────────────────────────────────
+// ─── Aqui configuramos los límites de cada plan de club (fuente única de verdad) ──
 const PLAN_LIMITS = {
     free:       { maxActivities: 1,  maxGroupsPerActivity: 1  },
     club_lite:  { maxActivities: 3,  maxGroupsPerActivity: 10 },
     club_pro:   { maxActivities: 5,  maxGroupsPerActivity: 15 },
     club_elite: { maxActivities: 10, maxGroupsPerActivity: 30 },
-    elite:      { maxActivities: 10, maxGroupsPerActivity: 30 }, // alias used by global club
+    elite:      { maxActivities: 10, maxGroupsPerActivity: 30 }, // alias que usa el club global
 };
+// Devuelve los límites del plan indicado, o los del plan "free" si el plan no existe
 const getPlanLimits = (plan) => PLAN_LIMITS[plan] || PLAN_LIMITS['free'];
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The wandering merchant appears Sundays (0) and Tuesdays (2) — gives players two chances per week
+// El mercader itinerante aparece los domingos (0) y martes (2): dos oportunidades de compra por semana
 function isMerchantDay(date = new Date()) {
     const day = date.getDay();
     return day === 0 || day === 2;
@@ -41,10 +42,10 @@ function getCurrentISOWeek(date = new Date()) {
     return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
-// Heroku Postgres Connection Pool
-// max:10 stays within the Heroku Postgres hobby/basic 25-connection limit.
-// idleTimeoutMillis releases unused connections so the dyno doesn't hold them open.
-// connectionTimeoutMillis avoids hanging requests when all connections are busy.
+// Aqui configuramos el pool de conexiones a Heroku Postgres
+// max:10 se mantiene dentro del límite de 25 conexiones del plan hobby/basic de Heroku Postgres
+// idleTimeoutMillis libera las conexiones inactivas para que el dyno no las retenga abiertas
+// connectionTimeoutMillis evita peticiones colgadas cuando todas las conexiones están ocupadas
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
@@ -53,7 +54,7 @@ const pool = new Pool({
     connectionTimeoutMillis: 5000,
 });
 
-// Initialize Database Tables
+// Aqui inicializamos y migramos todas las tablas de la base de datos al arrancar
 const initDB = async () => {
     if (!process.env.DATABASE_URL) {
         console.warn('No DATABASE_URL found. Skipping database initialization.');
@@ -61,8 +62,8 @@ const initDB = async () => {
     }
 
     try {
-        // --- 0. SUPER-PRIORITY MIGRATIONS (Fixes crashes and hangs) ---
-        // Ensure boss table is up to date immediately
+        // --- 0. MIGRACIONES DE MÁXIMA PRIORIDAD (corrigen caídas y bloqueos del servidor) ---
+        // Aqui nos aseguramos de que la tabla de jefes (bosses) exista antes que nada
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_bosses (
                 boss_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,14 +87,14 @@ const initDB = async () => {
             );
         `).catch(() => { });
 
-        // Sequential ADDs to be absolutely sure
+        // Aqui añadimos columnas nuevas una a una con IF NOT EXISTS para no romper bases de datos ya existentes
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS min_damage INTEGER DEFAULT 10`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS max_damage INTEGER DEFAULT 20`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS attack_interval_min INTEGER DEFAULT 1000`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS attack_interval_max INTEGER DEFAULT 10000`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses DROP COLUMN IF EXISTS base_damage`).catch(() => { });
 
-        // 0. Belts (Catálogo de Cinturones)
+        // 0. Catálogo de cinturones (tul_belts)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_belts (
                 id SERIAL PRIMARY KEY,
@@ -103,7 +104,7 @@ const initDB = async () => {
             );
         `);
 
-        // 1. Clubs Table
+        // 1. Tabla de clubs (tul_clubs): cada club tiene su propio plan y logo
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_clubs (
                 club_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -114,9 +115,9 @@ const initDB = async () => {
             );
         `);
 
-        // --- END CRITICAL BOSS MIGRATIONS ---
+        // --- FIN DE LAS MIGRACIONES CRÍTICAS DE JEFES ---
 
-        // 2. Users Table
+        // 2. Tabla de usuarios: datos personales, cinturón, rol y club al que pertenece
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -137,7 +138,7 @@ const initDB = async () => {
             );
         `);
 
-        // 3. User Belts Table
+        // 3. Histórico de cinturones por usuario (tul_user_belts): registra cada cambio de nivel
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_user_belts (
                 id SERIAL PRIMARY KEY,
@@ -147,7 +148,7 @@ const initDB = async () => {
             );
         `);
 
-        // 4. Tuls Table
+        // 4. Catálogo de tuls (formas/patrones): nombre, vídeo, número de movimientos y cinturón requerido
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_tuls (
                 tul_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -159,11 +160,11 @@ const initDB = async () => {
             );
         `);
 
-        // Ensure unique index exists on tul_tuls(name) for existing production DBs
-        // (CREATE TABLE UNIQUE only applies to new tables; existing ones need this)
+        // Aqui forzamos el índice único sobre tul_tuls(name) para bases de datos ya existentes
+        // (la restricción UNIQUE de CREATE TABLE solo se aplica a tablas nuevas, no a las que ya existían)
         await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tul_tuls_name ON tul_tuls (name)`);
 
-        // Seed tul_tuls from tulsData.json if the table is empty
+        // Si la tabla está vacía, la rellenamos con los datos del fichero tulsData.json
         const tulCount = await pool.query('SELECT COUNT(*) FROM tul_tuls');
         if (parseInt(tulCount.rows[0].count) === 0) {
             try {
@@ -181,7 +182,7 @@ const initDB = async () => {
             }
         }
 
-        // 5. Activities (e.g. Taekwondo, Ballet)
+        // 5. Actividades del club (p.ej. Taekwondo, Ballet)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_activities (
                 activity_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -191,7 +192,7 @@ const initDB = async () => {
             );
         `);
 
-        // 6. Groups (Classes within an Activity)
+        // 6. Grupos/clases dentro de cada actividad (p.ej. "Infantil 18:00")
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_groups (
                 group_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -202,7 +203,7 @@ const initDB = async () => {
             );
         `);
 
-        // 7. Group Students (Many-to-Many linking students to classes)
+        // 7. Relación N a N entre alumnos y grupos (qué alumno está en qué clase)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_group_students (
                 group_id UUID REFERENCES tul_groups(group_id) ON DELETE CASCADE,
@@ -211,7 +212,7 @@ const initDB = async () => {
             );
         `);
 
-        // 7b. Enrollment history (altas/bajas in groups)
+        // 7b. Histórico de altas y bajas de alumnos en los grupos
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_enrollment_history (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -226,7 +227,7 @@ const initDB = async () => {
             );
         `);
 
-        // 8. Attendance
+        // 8. Asistencia: un registro por alumno, grupo y día (con marca de si fue automática)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_attendance (
                 attendance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -240,7 +241,7 @@ const initDB = async () => {
             );
         `);
 
-        // 9. Evaluations
+        // 9. Evaluaciones de tuls (forma evaluada, instructor, nota y comentario general)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_evaluations (
                 evaluation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -252,11 +253,12 @@ const initDB = async () => {
                 summary_comment TEXT
             );
         `);
-        // Add tul_name column to existing databases that didn't have it
+        // Añadimos la columna tul_name a bases de datos antiguas que no la tenían
         await pool.query(`ALTER TABLE tul_evaluations ADD COLUMN IF NOT EXISTS tul_name TEXT`);
         await pool.query(`ALTER TABLE tul_evaluations ADD COLUMN IF NOT EXISTS activity_id UUID REFERENCES tul_activities(activity_id) ON DELETE SET NULL`).catch(() => { });
 
-        // Activity classification (lets the app know which activity is "Taekwondo ITF" so TULs/evaluations/practice dashboard can be scoped to it)
+        // Aqui clasificamos las actividades por tipo, para que la app sepa cuál es "Taekwondo ITF"
+        // y pueda limitar a ella los tuls, las evaluaciones y el panel de práctica
         await pool.query(`ALTER TABLE tul_activities ADD COLUMN IF NOT EXISTS activity_type VARCHAR(50) DEFAULT 'general'`).catch(() => { });
         await pool.query(`
             UPDATE tul_activities
@@ -264,8 +266,8 @@ const initDB = async () => {
             WHERE activity_type = 'general' AND (name ILIKE '%taekwondo%' OR name ILIKE '%itf%')
         `).catch(() => { });
 
-        // Generic per-(user, activity) progression: generalizes belts to support
-        // other scales (Inglés levels, Ballet grades) alongside Taekwondo belts
+        // Progresión genérica por (usuario, actividad): generaliza el sistema de cinturones
+        // para admitir otras escalas (niveles de Inglés, grados de Ballet) además de Taekwondo
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_user_progression (
                 id SERIAL PRIMARY KEY,
@@ -293,7 +295,8 @@ const initDB = async () => {
         `).catch(() => { });
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_tul_user_progression_history_user ON tul_user_progression_history (user_id, activity_id)`).catch(() => { });
 
-        // One-time backfill: seed Taekwondo ITF progression rows from each enrolled student's existing global belt
+        // Migración única: crea filas de progresión de Taekwondo ITF a partir del cinturón
+        // global que ya tenía cada alumno matriculado, para no perder su progreso previo
         await pool.query(`
             INSERT INTO tul_user_progression (user_id, activity_id, activity_type, level_order, level_name)
             SELECT DISTINCT u.user_id, a.activity_id, 'taekwondo_itf',
@@ -306,7 +309,8 @@ const initDB = async () => {
             ON CONFLICT (user_id, activity_id) DO NOTHING
         `).catch(() => { });
 
-        // Append-only exp ledger: tags where RPG exp came from (activity/source) for future per-activity reporting, without restructuring tul_rpg
+        // Registro de experiencia (solo inserciones): guarda de qué actividad y fuente viene
+        // cada cantidad de exp ganada, para poder generar informes por actividad sin tocar tul_rpg
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_exp_log (
                 log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -324,7 +328,7 @@ const initDB = async () => {
         await pool.query(`ALTER TABLE tul_groups ADD COLUMN IF NOT EXISTS max_age INTEGER`);
         await pool.query(`ALTER TABLE tul_groups ADD COLUMN IF NOT EXISTS sessions JSONB`);
 
-        // tul_aulas (rooms/classrooms per club)
+        // Aulas/salas de cada club, con su capacidad y color para el calendario
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_aulas (
                 aula_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -337,7 +341,7 @@ const initDB = async () => {
             )
         `);
 
-        // 10. Evaluation Movements
+        // 10. Notas por movimiento dentro de cada evaluación de tul
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_evaluation_movements (
                 movement_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -348,7 +352,7 @@ const initDB = async () => {
             );
         `);
 
-        // 10b. Category-based evaluations (Inglés/Ballet rubrics — Taekwondo keeps using tul_evaluations above)
+        // 10b. Evaluaciones por categorías/rúbricas (Inglés, Ballet); Taekwondo sigue usando tul_evaluations
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_category_evaluations (
                 evaluation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -371,7 +375,7 @@ const initDB = async () => {
         `);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_tul_category_eval_scores_eval ON tul_category_evaluation_scores (evaluation_id)`).catch(() => { });
 
-        // 11. Vocabulary Game
+        // 11. Vocabulario para el juego de palabras (término + significado, por club)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_vocabulary (
                 vocabulary_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -382,7 +386,7 @@ const initDB = async () => {
             );
         `);
 
-        // 12. Puntos
+        // 12. Puntos acumulados de cada usuario
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_puntos (
                 user_id UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
@@ -390,7 +394,7 @@ const initDB = async () => {
             );
         `);
 
-        // 12b. Technique Requests (Pedir Técnica)
+        // 12b. Solicitudes de "Pedir Técnica": el instructor propone una técnica para que el grupo la practique
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_technique_requests (
                 request_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -419,7 +423,7 @@ const initDB = async () => {
             );
         `);
 
-        // 13. Clans
+        // 13. Clanes: agrupaciones de usuarios dentro de un club, con su emblema
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_clans (
                 clan_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -430,7 +434,7 @@ const initDB = async () => {
             );
         `);
 
-        // 14. Clan Members
+        // 14. Miembros de cada clan, con su rol (líder, miembro, etc.)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_clan_members (
                 clan_id UUID REFERENCES tul_clans(clan_id) ON DELETE CASCADE,
@@ -441,7 +445,7 @@ const initDB = async () => {
             );
         `);
 
-        // 15. Bosses
+        // 15. Jefes (bosses) de las batallas: vida, daño, recompensas y tabla de loot
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_bosses (
                 boss_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -465,7 +469,7 @@ const initDB = async () => {
             );
         `);
 
-        // 16. Clan Boss Progress
+        // 16. Progreso de cada clan contra cada jefe (vida restante y última vez que lo atacaron)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_clan_boss_progress (
                 clan_id UUID REFERENCES tul_clans(clan_id) ON DELETE CASCADE,
@@ -476,7 +480,7 @@ const initDB = async () => {
             );
         `);
 
-        // 17. Market Items
+        // 17. Artículos de la tienda/mercado de cada club (precio en puntos, tipo, stock, etc.)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_market_items (
                 item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -491,7 +495,7 @@ const initDB = async () => {
             );
         `);
 
-        // 18. Inventory
+        // 18. Inventario: artículos que posee cada usuario y si ya los ha usado
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_inventory (
                 inventory_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -504,7 +508,7 @@ const initDB = async () => {
 
 
 
-        // 19. Clan Chat
+        // 19. Mensajes del chat interno de cada clan
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_clan_chat (
                 message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -516,7 +520,7 @@ const initDB = async () => {
             );
         `);
 
-        // 20. RPG Class Table
+        // 20. Datos de personaje RPG de cada usuario: clase, nivel, exp, vida y puntos de habilidad
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_rpg (
                 user_id UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
@@ -530,7 +534,7 @@ const initDB = async () => {
             );
         `);
 
-        // 21. Support Registry (Upgraded)
+        // 21. Registro de tickets de soporte (versión mejorada con prioridad y asignación)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tickets_registrosoporte (
                 id SERIAL PRIMARY KEY,
@@ -548,7 +552,7 @@ const initDB = async () => {
             );
         `);
 
-        // 22. Boss Participants (Fixing 500 on clan deletion)
+        // 22. Participantes en cada batalla de jefe (corrige el error 500 al borrar un clan)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_boss_participants (
                 boss_id UUID, 
@@ -558,7 +562,7 @@ const initDB = async () => {
             );
         `);
 
-        // 23. Demo Event Registrations
+        // 23. Inscripciones al evento de demostración (nombre y email)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tul_demoregistrations (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -568,7 +572,7 @@ const initDB = async () => {
             );
         `);
 
-        // --- GLOBAL CLUB INITIALIZATION ---
+        // --- AQUI INICIALIZAMOS EL CLUB GLOBAL (el club oficial al que pertenecen todos por defecto) ---
         const GLOBAL_CLUB_ID = '00000000-0000-4000-a000-000000000000';
         await pool.query(`
             INSERT INTO tul_clubs (club_id, name, logo, plan)
@@ -576,7 +580,7 @@ const initDB = async () => {
             ON CONFLICT (club_id) DO UPDATE SET name = EXCLUDED.name
         `, [GLOBAL_CLUB_ID]);
 
-        // 12. Database Migrations
+        // 12. Aqui aplicamos migraciones sueltas sobre tablas ya existentes
         await pool.query(`ALTER TABLE tul_clans ADD COLUMN IF NOT EXISTS logo TEXT`).catch(() => { });
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(255) UNIQUE`);
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS belt_level INTEGER`);
@@ -588,7 +592,7 @@ const initDB = async () => {
         await pool.query(`ALTER TABLE tul_attendance ADD COLUMN IF NOT EXISTS is_auto BOOLEAN DEFAULT FALSE`).catch(() => { });
         await pool.query(`ALTER TABLE tul_attendance ADD CONSTRAINT unique_attendance_per_group_student_date UNIQUE (group_id, student_id, date)`).catch(() => { });
 
-        // --- RPG REWORK MIGRATIONS (Boss ones moved to top) ---
+        // --- MIGRACIONES DE LA REFORMA DEL RPG (las de jefes se movieron al principio del archivo) ---
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'monster'`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS rarity_weight INTEGER DEFAULT 100`).catch(() => { });
         await pool.query(`ALTER TABLE tul_bosses ADD COLUMN IF NOT EXISTS loot_table JSONB DEFAULT '[]'`).catch(() => { });
@@ -623,32 +627,33 @@ const initDB = async () => {
         await pool.query(`ALTER TABLE tul_market_items ADD COLUMN IF NOT EXISTS buy_price_max INTEGER`).catch(() => { });
         await pool.query(`UPDATE tul_market_items SET is_in_base_store = true WHERE is_in_base_store IS NULL`).catch(() => { });
 
-        // --- SUPPORT SYSTEM UPGRADE ---
-        // 1. Check if OLD table exists and migrate data if so
+        // --- AQUI MIGRAMOS EL SISTEMA DE SOPORTE A SU NUEVA ESTRUCTURA ---
+        // 1. Si existe la tabla antigua, copiamos sus datos a la nueva y la eliminamos
         await pool.query(`
-            DO $$ 
-            BEGIN 
+            DO $$
+            BEGIN
                 IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tul_registrosoporte') THEN
-                    -- Insert old data into the new table structure
+                    -- Volcamos los datos antiguos en la nueva estructura de tabla
                     INSERT INTO tickets_registrosoporte (id, user_id, subject, description, status, dev_response, email_sent, created_at)
-                    SELECT id, user_id, subject, description, status, dev_response, email_sent, created_at 
+                    SELECT id, user_id, subject, description, status, dev_response, email_sent, created_at
                     FROM tul_registrosoporte
                     ON CONFLICT (id) DO NOTHING;
-                    
-                    -- Drop the old table now that data is safe
+
+                    -- Borramos la tabla vieja una vez los datos están a salvo
                     DROP TABLE tul_registrosoporte;
                 END IF;
             END $$;
         `).catch((e) => { console.error('Migration Error (Support):', e); });
 
-        // 2. Add new columns (if not already there)
+        // 2. Añadimos las columnas nuevas (si todavía no existen)
         await pool.query(`ALTER TABLE tickets_registrosoporte ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'low'`).catch(() => { });
         await pool.query(`ALTER TABLE tickets_registrosoporte ADD COLUMN IF NOT EXISTS due_date TIMESTAMP`).catch(() => { });
         await pool.query(`ALTER TABLE tickets_registrosoporte ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(user_id) ON DELETE SET NULL`).catch(() => { });
-        // 2. Add new columns
+        // 2. Añadimos más columnas nuevas
         await pool.query(`ALTER TABLE tickets_registrosoporte ADD COLUMN IF NOT EXISTS app_label TEXT[] DEFAULT ARRAY['Learning Dungeon']`).catch(() => { });
-        // 2. Add new columns / Migrate app_label (Safe & Self-Repairing)
-        // Optimization: Only run heavy logic if necessary
+        // 2. Migramos app_label de forma segura y autorreparable
+        // Optimización: solo ejecutamos la lógica pesada si hace falta de verdad
+
         try {
             const checkData = await pool.query(`
                 SELECT count(*) as count FROM tickets_registrosoporte 
@@ -667,8 +672,7 @@ const initDB = async () => {
                 await pool.query('ALTER TABLE tickets_registrosoporte ALTER COLUMN app_label TYPE TEXT[] USING array[app_label]::TEXT[]');
                 await pool.query("ALTER TABLE tickets_registrosoporte ALTER COLUMN app_label SET DEFAULT ARRAY['Learning Dungeon']");
             } else if (currentType === 'ARRAY') {
-                // Only flatten if we haven't checked recently to avoid slow startups
-                // This query is now indexed-friendly or less frequent
+                // Solo aplanamos el array si detectamos anidación, para no ralentizar cada arranque
                 const needsRepair = await pool.query(`SELECT 1 FROM tickets_registrosoporte WHERE array_ndims(app_label) > 1 LIMIT 1`);
                 if (needsRepair.rowCount > 0) {
                     console.log('[MIGRATION] Nesting detected, repairing...');
@@ -684,15 +688,15 @@ const initDB = async () => {
         }
 
 
-        // 3. Ensure dev_role in users
+        // 3. Nos aseguramos de que exista la columna dev_role en users
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dev_role VARCHAR(50) DEFAULT 'student'`).catch(() => { });
 
-        // 4. Instructor activity assignments
+        // 4. Actividades asignadas a cada instructor
         await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_ids UUID[]`).catch(() => { });
 
-        // ── Performance indexes ───────────────────────────────────────────────
-        // These are the columns that appear most in WHERE / JOIN clauses.
-        // CREATE INDEX IF NOT EXISTS is idempotent — safe to re-run on every boot.
+        // ── Aqui creamos los índices de rendimiento ───────────────────────────
+        // Son las columnas que más aparecen en cláusulas WHERE / JOIN.
+        // CREATE INDEX IF NOT EXISTS es idempotente: se puede repetir en cada arranque sin problema.
         const indexes = [
             'CREATE INDEX IF NOT EXISTS idx_users_club_id              ON users (club_id)',
             'CREATE INDEX IF NOT EXISTS idx_users_email                ON users (email)',
@@ -720,8 +724,8 @@ const initDB = async () => {
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        // Backfill users.belt_level from tul_user_belts for students whose
-        // belt_level is still 0/null (belt text is in users.belt, the authoritative column).
+        // Aqui rellenamos users.belt_level a partir de tul_user_belts para los alumnos cuyo
+        // belt_level sigue a 0/null (el texto del cinturón vive en users.belt, que es la columna de referencia).
         await pool.query(`
             UPDATE users u
             SET belt_level = ub.belt_level
@@ -736,13 +740,13 @@ const initDB = async () => {
         `).catch((e) => { console.warn('Belt_level backfill skipped:', e.message); });
         await pool.query(`ALTER TABLE tul_market_items ADD COLUMN IF NOT EXISTS buy_price_max INTEGER`).catch(() => { });
 
-        // 4. Sync ID sequence for tickets (Cheap)
+        // 4. Sincronizamos la secuencia de IDs de los tickets (operación barata)
         await pool.query(`SELECT setval('tickets_registrosoporte_id_seq', (SELECT COALESCE(MAX(id), 0) FROM tickets_registrosoporte), true)`).catch(() => { });
 
-        // Heavy cleanup tasks moved to non-await or simplified
+        // Aqui lanzamos en segundo plano (sin await) las tareas de limpieza más pesadas, para no retrasar el arranque
         (async () => {
             try {
-                // Cleanup duplicates only if constraint doesn't exist yet
+                // Solo limpiamos duplicados si la restricción todavía no existe
                 const hasConstraint = await pool.query(`SELECT 1 FROM pg_constraint WHERE conname = 'unique_market_item_name_per_club'`);
                 if (hasConstraint.rows.length === 0) {
                     await pool.query(`
@@ -760,7 +764,7 @@ const initDB = async () => {
 
         await pool.query(`ALTER TABLE tul_inventory ADD COLUMN IF NOT EXISTS is_equipped BOOLEAN DEFAULT false`).catch(() => { });
 
-        // Migrate users in the background to not block startup
+        // Aqui migramos los usuarios sin username en segundo plano para no bloquear el arranque
         (async () => {
             try {
                 await pool.query(`
@@ -771,7 +775,7 @@ const initDB = async () => {
             } catch (e) { }
         })();
 
-        // Enforce leader in the background (email configured via ADMIN_EMAIL env var)
+        // Aqui forzamos el rol de líder para el admin (el email se configura con la variable de entorno ADMIN_EMAIL)
         if (process.env.ADMIN_EMAIL) {
             pool.query(
                 `UPDATE tul_clan_members SET role = 'leader'
@@ -794,10 +798,10 @@ const initDB = async () => {
         await pool.query(`ALTER TABLE tul_market_items ADD COLUMN IF NOT EXISTS weight NUMERIC DEFAULT 0.5`).catch(() => { });
 
         // ==========================================
-        // DATABASE SEEDING (Catalog Defaults)
+        // Aqui sembramos los catálogos por defecto en la base de datos
         // ==========================================
 
-        // Seed Belts
+        // Sembramos los cinturones
         try {
             await pool.query(`ALTER TABLE tul_belts ADD CONSTRAINT belts_belt_level_key UNIQUE(belt_level)`).catch(() => { });
             await pool.query(`
@@ -856,7 +860,7 @@ const initDB = async () => {
             }
         }
 
-        // Seed All Tuls (Backgrounded to solve timeout)
+        // Sembramos todos los tuls (en segundo plano para evitar el timeout de arranque)
         setTimeout(async () => {
             try {
                 const tulsPath = path.join(__dirname, 'tulsData.json');
@@ -876,7 +880,7 @@ const initDB = async () => {
             }
         }, 5000);
 
-        // --- RPG SYSTEM ITEMS SEEDING ---
+        // --- Aqui sembramos los artículos del sistema RPG en cada club ---
         try {
             const systemItemsRes = await pool.query('SELECT club_id FROM tul_clubs');
             const resetItemImg = 'https://cdn-icons-png.flaticon.com/512/3233/3233959.png';
@@ -948,7 +952,7 @@ const initDB = async () => {
 
 const activeLobbies = {};
 
-// --- DEMO BOSS STATE ---
+// --- Aqui guardamos el estado en memoria de los jefes de la demo ---
 let demoState = {
     bosses: [
         { id: 1, name: "Guerrero Sombra", totalHp: 5000, hp: 5000, img: "https://i.postimg.cc/fL3K610Y/Persian-Warrior.png" },
@@ -962,7 +966,7 @@ let demoState = {
     intermissionSeconds: 0
 };
 
-// --- ARBITRAJE BOSS STATE ---
+// --- Aqui guardamos el estado en memoria del jefe del modo arbitraje ---
 let arbitrajeState = {
     boss: {
         name: "Maestra Ana María",
@@ -975,7 +979,7 @@ let arbitrajeState = {
     players: {} // socketId -> { name, hp, damage, deaths }
 };
 
-// Extract verified userId from JWT handshake auth token (if provided)
+// Aqui extraemos el userId verificado del token JWT que llega en el handshake del socket (si lo hay)
 io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (token) {
@@ -983,14 +987,14 @@ io.use((socket, next) => {
             const decoded = jwt.verify(token, JWT_SECRET);
             socket.data.userId = decoded.userId;
         } catch {
-            // Invalid token — socket connects but userId won't be trusted from payload
+            // Token inválido: el socket se conecta igualmente, pero no confiamos en el userId del payload
         }
     }
     next();
 });
 
 io.on('connection', (socket) => {
-    // --- DEMO SOCKETS ---
+    // --- Aqui gestionamos los sockets de la sala de demostración ---
     socket.on('demo_tv_join', () => {
         socket.join('demo_tv');
         const boss = demoState.bosses[demoState.currentBossIndex];
@@ -1014,7 +1018,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('demo_attack', (damage) => {
-        if(demoState.intermissionSeconds > 0) return; // ignore attacks during intermission
+        if(demoState.intermissionSeconds > 0) return; // Ignoramos los ataques mientras dura la intermisión
         const boss = demoState.bosses[demoState.currentBossIndex];
         if (boss.hp > 0) {
             boss.hp = Math.max(0, boss.hp - damage);
@@ -1071,7 +1075,7 @@ io.on('connection', (socket) => {
         boss.hp = boss.totalHp;
         io.to('demo_tv').emit('demo_state_update', { boss });
 
-        // Restart attack interval if there are players inside
+        // Reiniciamos el intervalo de ataques si hay jugadores conectados
         if (Object.keys(demoState.players).length > 0 && !demoState.bossAttackInterval) {
             demoState.bossAttackInterval = setInterval(() => {
                 io.to('demo_players').emit('demo_boss_attack', { damage: 5 });
@@ -1088,9 +1092,9 @@ io.on('connection', (socket) => {
             }
         }
     });
-    // --- END DEMO SOCKETS ---
-    
-    // --- ARBITRAJE SOCKETS ---
+    // --- Fin de los sockets de la demo ---
+
+    // --- Aqui gestionamos los sockets del modo arbitraje ---
 
 
     socket.on('arb_tv_join', () => {
@@ -1130,23 +1134,23 @@ io.on('connection', (socket) => {
             });
 
             if (arbitrajeState.boss.hp <= 0) {
-                // Boss Defeated!
+                // ¡Jefe derrotado! Calculamos el ranking de jugadores por daño infligido
                 const ranking = Object.values(arbitrajeState.players)
                     .sort((a, b) => b.damage - a.damage);
-                
+
                 io.to('arb_tv').emit('arb_boss_defeated', { ranking, level: arbitrajeState.boss.level });
                 io.to('arb_players').emit('arb_boss_defeated');
 
-                // Scaling Boss
+                // Aqui escalamos el jefe: duplicamos su vida y su daño para la siguiente ronda
                 setTimeout(() => {
                     arbitrajeState.boss.level += 1;
                     arbitrajeState.boss.totalHp *= 2;
                     arbitrajeState.boss.hp = arbitrajeState.boss.totalHp;
                     arbitrajeState.boss.damagePerError *= 2;
-                    
+
                     io.to('arb_tv').emit('arb_state_update', { boss: arbitrajeState.boss });
                     io.to('arb_players').emit('arb_new_boss', { boss: arbitrajeState.boss });
-                }, 10000); // 10 seconds to see the ranking
+                }, 10000); // Dejamos 10 segundos para ver el ranking
             }
         } else {
             const penalty = arbitrajeState.boss.damagePerError;
@@ -1182,11 +1186,11 @@ io.on('connection', (socket) => {
             }
         }
         if (arbitrajeState.players[socket.id]) {
-            // We keep the player data for the ranking even if they disconnect
-            // but we could mark them as inactive if needed.
+            // Conservamos los datos del jugador para el ranking aunque se desconecte;
+            // si hiciera falta, aquí podríamos marcarlo como inactivo.
         }
     });
-    // --- END ARBITRAJE SOCKETS ---
+    // --- Fin de los sockets del modo arbitraje ---
 
     socket.on('join_clan', (clanId) => {
         socket.join(`clan_${clanId}`);
@@ -1194,10 +1198,10 @@ io.on('connection', (socket) => {
 
     socket.on('send_message', async (data) => {
         const { clanId, userName, message } = data;
-        // Use verified userId from JWT handshake — never trust client payload for identity
+        // Usamos el userId verificado del handshake JWT; nunca confiamos en la identidad que manda el cliente
         const userId = socket.data.userId || data.userId;
         try {
-            // Moderation Filter (+18 and Insults)
+            // Aqui filtramos palabras malsonantes e insultos antes de guardar el mensaje
             const badWords = [
                 'puta', 'putas', 'puto', 'putos', 'mierda', 'mierdas',
                 'cabron', 'cabrones', 'cabrona', 'joder', 'coño',
@@ -1275,15 +1279,16 @@ io.on('connection', (socket) => {
 });
 
 // Middlewares
-app.use(compression()); // gzip all responses — big win on Heroku
+app.use(compression()); // Comprimimos todas las respuestas con gzip — gran ahorro de ancho de banda en Heroku
 app.use(express.json({ limit: '10mb' }));
 
-// ─── JWT Authentication ───────────────────────────────────────────────────────
+// ─── Aqui configuramos la autenticación por JWT ──────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_in_production';
 
+// Middleware que valida el token Bearer y cuelga el payload decodificado en req.user
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
+    const token = authHeader && authHeader.split(' ')[1]; // Formato esperado: "Bearer <token>"
     if (!token) return res.status(401).json({ error: 'Authentication required.' });
     try {
         req.user = jwt.verify(token, JWT_SECRET);
@@ -1293,6 +1298,7 @@ const authenticateToken = (req, res, next) => {
     }
 };
 
+// Middleware que solo deja pasar a usuarios con devRole = 'superadmin'
 const requireSuperadmin = (req, res, next) => {
     if (!req.user || req.user.devRole !== 'superadmin') {
         return res.status(403).json({ error: 'Superadmin access required.' });
@@ -1300,7 +1306,7 @@ const requireSuperadmin = (req, res, next) => {
     next();
 };
 
-// Protect all write operations — GET routes remain public
+// Aqui protegemos todas las operaciones de escritura; las rutas GET quedan públicas
 const PUBLIC_POST_PATHS = ['/login', '/register'];
 app.use('/api', (req, res, next) => {
     if (req.method === 'GET') return next();
@@ -1309,7 +1315,7 @@ app.use('/api', (req, res, next) => {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
-// --- DEMO ROUTES & API ---
+// --- Aqui exponemos las rutas y la API de la demo ---
 app.get('/arbitraje/mobile', (req, res) => {
     res.sendFile(path.join(__dirname, 'arbitraje', 'mobile.html'));
 });
@@ -1330,7 +1336,7 @@ app.post('/api/demo/register', async (req, res) => {
 
 app.get('/api/demo/questions', async (req, res) => {
     try {
-        // Fetch vocabulary from Aim Education club
+        // Buscamos el vocabulario perteneciente al club "Aim Education"
         const aimEducationRes = await pool.query("SELECT club_id FROM tul_clubs WHERE name ILIKE '%Aim Education%' LIMIT 1");
         if (aimEducationRes.rows.length === 0) {
             return res.status(200).json({ success: true, questions: [] });
@@ -1344,19 +1350,19 @@ app.get('/api/demo/questions', async (req, res) => {
     }
 });
 
-// API Endpoints
-// --- REGISTER NEW USER ---
+// Endpoints de la API
+// --- Aqui registramos un usuario nuevo ---
 app.post('/api/register', async (req, res) => {
-    // Extract fields expecting from the Learning Dungeon React Native client
+    // Extraemos los campos que env\u00eda el cliente de Learning Dungeon (React Native)
     const { name, surname, email, password, belt, phone, birthday, mediaConsent, adRemoval } = req.body;
 
-    // Validate required fields
+    // Comprobamos que est\u00e9n presentes los campos obligatorios
     if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
 
     try {
-        // Generate Username: First 2 letters of first name word + First 2 letters of first surname word + BD Day + BD Month
+        // Generamos el username: 2 primeras letras del nombre + 2 primeras del apellido + d\u00eda y mes de nacimiento
         const cleanAccents = (str) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : '';
         const namePart = cleanAccents(name.trim().split(' ')[0]).substring(0, 2);
         const surnamePart = surname ? cleanAccents(surname.trim().split(' ')[0]).substring(0, 2) : 'es';
@@ -1370,17 +1376,17 @@ app.post('/api/register', async (req, res) => {
         }
         let baseUsername = `${namePart}${surnamePart}${bdPart}`;
 
-        // Handle edge case of an existing identical username right off the bat, append 4 random digits
+        // Si ya existe ese username exacto, le a\u00f1adimos 4 d\u00edgitos aleatorios para desambiguar
         const checkUser = await pool.query('SELECT 1 FROM users WHERE username = $1', [baseUsername]);
         if (checkUser.rows.length > 0) {
             baseUsername = `${baseUsername}${Math.floor(1000 + Math.random() * 9000)}`;
         }
 
-        // Hash password before saving
+        // Encriptamos la contrase\u00f1a antes de guardarla
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // Parameterized query to prevent SQL injection
+        // Consulta parametrizada para evitar inyecci\u00f3n SQL
         const query = `
             INSERT INTO users(
                         name, surname, email, username, password, belt, phone, birthday, media_consent, ad_removal
@@ -1393,7 +1399,7 @@ app.post('/api/register', async (req, res) => {
             surname || null,
             email.toLowerCase(),
             baseUsername,
-            hashedPassword, // Successfully hashed with bcrypt
+            hashedPassword, // Contraseña ya encriptada con bcrypt
             belt || 'Blanco (10º Gup)',
             phone || null,
             birthday || null,
@@ -1404,7 +1410,7 @@ app.post('/api/register', async (req, res) => {
         const result = await pool.query(query, values);
         const newUser = result.rows[0];
 
-        // --- PHASE 12: HUBSPOT REAL-TIME SYNC ---
+        // --- Aqui sincronizamos el contacto con HubSpot en tiempo real (si está configurado) ---
         if (process.env.HUBSPOT_ACCESS_TOKEN) {
             try {
                 const hubspotResponse = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
@@ -1425,7 +1431,7 @@ app.post('/api/register', async (req, res) => {
 
                 if (!hubspotResponse.ok) {
                     const errorResponse = await hubspotResponse.json();
-                    if (hubspotResponse.status !== 409) { // 409 is expected if contact exists. Ignore it silently.
+                    if (hubspotResponse.status !== 409) { // El 409 es normal si el contacto ya existe; lo ignoramos en silencio
                         console.warn('HubSpot Sync Warning (non-fatal):', errorResponse);
                     }
                 }
@@ -1434,12 +1440,12 @@ app.post('/api/register', async (req, res) => {
             }
         }
 
-        // Return the newly created user (excluding password)
+        // Devolvemos el usuario recién creado (sin la contraseña)
         res.status(201).json({ success: true, user: newUser });
 
     } catch (err) {
         console.error('API Error during /register:', err);
-        // Catch PostgreSQL duplicate email unique constraint error
+        // Capturamos el error de restricción única de PostgreSQL cuando el email ya existe
         if (err.code === '23505' && err.constraint === 'users_email_key') {
             return res.status(409).json({ error: 'This email is already registered.' });
         }
@@ -1447,7 +1453,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// --- LOGIN USER ---
+// --- Aqui gestionamos el login del usuario ---
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -1457,7 +1463,7 @@ app.post('/api/login', async (req, res) => {
 
     try {
         const isEmail = email.includes('@');
-        // Find user by email or username, joining with clubs and belts tables
+        // Buscamos al usuario por email o por username, juntando datos del club y del cinturón dinámico
         const query = `
             SELECT u.*, c.name as organization_name, c.logo as organization_logo, c.plan as club_plan,
                    rpg.rpg_class as rpg_class,
@@ -1477,18 +1483,18 @@ app.post('/api/login', async (req, res) => {
 
         const user = result.rows[0];
 
-        // Resolve the rank: belt_level in users is the numeric cache of users.belt
+        // Resolvemos el rango: belt_level en users es la caché numérica de users.belt
         const finalRank = user.belt_level != null ? parseInt(user.belt_level)
             : (user.dynamic_rank != null ? parseInt(user.dynamic_rank) : 0);
 
-        // Compare the provided plaintext password against the stored bcrypt hash
+        // Comparamos la contraseña en texto plano recibida contra el hash bcrypt guardado
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
 
-        // Remove the password hash before sending back the user profile
+        // Quitamos el hash de la contraseña antes de devolver el perfil del usuario
         delete user.password;
 
         let organizationId = user.club_id;
@@ -1504,7 +1510,7 @@ app.post('/api/login', async (req, res) => {
             await pool.query("UPDATE users SET club_id = $1 WHERE user_id = $2", [organizationId, user.user_id]);
         }
 
-        // Map Postgres column names to Learning Dungeon UserProfile interface
+        // Aqui transformamos las columnas de Postgres al formato UserProfile que espera el cliente
         const userProfile = {
             id: user.user_id,
             name: `${user.name} ${user.surname || ''}`.trim(),
@@ -1538,7 +1544,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- UPDATE USER USERNAME ---
+// --- Aqui actualizamos el username del usuario ---
 app.put('/api/users/:userId/username', async (req, res) => {
     const { userId } = req.params;
     const { username } = req.body;
@@ -1553,7 +1559,7 @@ app.put('/api/users/:userId/username', async (req, res) => {
         res.status(200).json({ success: true, username: cleanUsername });
     } catch (err) {
         console.error('API Error during /users/:userId/username:', err);
-        // Catch PostgreSQL duplicate username unique constraint error
+        // Capturamos el error de restricción única de PostgreSQL cuando el username ya está cogido
         if (err.code === '23505' && err.constraint === 'users_username_key') {
             return res.status(409).json({ error: 'This username is already taken.' });
         }
@@ -1561,7 +1567,7 @@ app.put('/api/users/:userId/username', async (req, res) => {
     }
 });
 
-// --- UPDATE USER PROFILE PICTURE ---
+// --- Aqui actualizamos la foto de perfil del usuario ---
 app.put('/api/users/:userId/profile-picture', async (req, res) => {
     const { userId } = req.params;
     const { image } = req.body;
@@ -1573,7 +1579,7 @@ app.put('/api/users/:userId/profile-picture', async (req, res) => {
     if (!validPrefixes.some(p => image.startsWith(p))) {
         return res.status(400).json({ error: 'Invalid image format. Must be JPEG, PNG or WebP.' });
     }
-    if (image.length > 14 * 1024 * 1024) { // ~10MB actual after base64 overhead
+    if (image.length > 14 * 1024 * 1024) { // ~10MB reales una vez descontada la sobrecarga de base64
         return res.status(413).json({ error: 'Image too large. Maximum size is 10MB.' });
     }
 
@@ -1586,7 +1592,7 @@ app.put('/api/users/:userId/profile-picture', async (req, res) => {
     }
 });
 
-// --- UPDATE USER RPG CLASS ---
+// --- Aqui asignamos o cambiamos la clase RPG del usuario ---
 app.put('/api/users/:userId/rpg-class', async (req, res) => {
     const { userId } = req.params;
     const { rpgClass } = req.body;
@@ -1613,7 +1619,7 @@ app.put('/api/users/:userId/rpg-class', async (req, res) => {
 });
 
 
-// --- ADMIN PASSWORD RESET ---
+// --- Aqui un admin puede resetear la contraseña de cualquier usuario ---
 app.put('/api/users/:userId/password/admin', async (req, res) => {
     const { userId } = req.params;
     const { newPassword } = req.body;
@@ -1634,7 +1640,7 @@ app.put('/api/users/:userId/password/admin', async (req, res) => {
     }
 });
 
-// --- UPDATE USER BELT ---
+// --- Aqui actualizamos la progresión del alumno en una actividad concreta (genérico para cualquier escala, no solo cinturones) ---
 app.put('/api/users/:userId/progression', async (req, res) => {
     const { userId } = req.params;
     const { activityId, levelOrder, levelName, assigned_by_user_id: assignedByUserId = null } = req.body;
@@ -1647,7 +1653,7 @@ app.put('/api/users/:userId/progression', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Resolve the activity's type and confirm the student is enrolled in it
+        // Averiguamos el tipo de la actividad y confirmamos que el alumno está matriculado en ella
         const activityCheck = await client.query(`
             SELECT a.activity_id, a.activity_type
             FROM tul_activities a
@@ -1664,7 +1670,8 @@ app.put('/api/users/:userId/progression', async (req, res) => {
         }
         const activityType = activityCheck.rows[0].activity_type;
 
-        // Permission rules branch on activity_type: only Taekwondo gates promotion by the assigner's own Dan rank
+        // Las reglas de permisos dependen del activity_type: solo en Taekwondo se exige que quien
+        // promociona tenga al menos cierto rango Dan propio
         if (assignedByUserId) {
             const assignerRes = await client.query('SELECT role, belt_level, belt FROM users WHERE user_id = $1', [assignedByUserId]);
             if (assignerRes.rows.length === 0) {
@@ -1690,7 +1697,7 @@ app.put('/api/users/:userId/progression', async (req, res) => {
                     return res.status(403).json({ error: 'Rol no autorizado para promover.' });
                 }
             } else {
-                // Other branches (Inglés, Ballet, ...) don't require a personal rank prerequisite to assess students
+                // En el resto de actividades (Inglés, Ballet, ...) no se exige un rango propio mínimo para evaluar alumnos
                 if (assigner.role !== 'instructor' && assigner.role !== 'club_owner') {
                     await client.query('ROLLBACK');
                     return res.status(403).json({ error: 'Rol no autorizado para promover.' });
@@ -1698,7 +1705,7 @@ app.put('/api/users/:userId/progression', async (req, res) => {
             }
         }
 
-        // Generic per-activity progression record (current state + history)
+        // Guardamos el registro genérico de progresión por actividad (estado actual + histórico)
         await client.query(
             `INSERT INTO tul_user_progression (user_id, activity_id, activity_type, level_order, level_name, updated_at)
              VALUES ($1, $2, $3, $4, $5, NOW())
@@ -1712,8 +1719,8 @@ app.put('/api/users/:userId/progression', async (req, res) => {
             [userId, activityId, activityType, levelOrder, levelName]
         );
 
-        // Dual-write: keep the global belt mirror in sync for Taekwondo so existing
-        // global-rank consumers (combat multiplier, TUL gating, BeltDisplay) keep working
+        // Escritura doble: para Taekwondo mantenemos sincronizado el cinturón global del usuario,
+        // ya que otras partes de la app (multiplicador de combate, acceso a tuls, BeltDisplay) siguen leyendo de ahí
         if (activityType === 'taekwondo_itf') {
             await client.query(
                 'UPDATE users SET belt = $1, belt_level = $2 WHERE user_id = $3',
@@ -1736,9 +1743,9 @@ app.put('/api/users/:userId/progression', async (req, res) => {
     }
 });
 
-// Returns every per-activity progression record a user currently has (used to hydrate
-// the generalized promotion modal for instructors, who — unlike students — aren't
-// enrolled via tul_group_students so getStudentGroups can't surface this for them)
+// Aqui devolvemos todos los registros de progresión por actividad de un usuario (sirve para
+// rellenar el modal de promoción genérico de los instructores, que al no estar matriculados
+// vía tul_group_students no aparecen en getStudentGroups)
 app.get('/api/users/:userId/progression', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1756,8 +1763,8 @@ app.get('/api/users/:userId/progression', async (req, res) => {
     }
 });
 
-// Promotes an instructor's own personal Taekwondo Dan rank (a qualification, not a
-// per-activity student progression — distinct from PUT /api/users/:userId/progression)
+// Aqui promocionamos el rango Dan personal del propio instructor en Taekwondo (es una
+// cualificación suya, no la progresión de un alumno — distinto de PUT /api/users/:userId/progression)
 app.put('/api/users/:userId/belt', async (req, res) => {
     const { userId } = req.params;
     const { beltName, beltLevel, assigned_by_user_id: assignedByUserId = null } = req.body;
@@ -1803,7 +1810,7 @@ app.put('/api/users/:userId/belt', async (req, res) => {
     }
 });
 
-// --- CLUB ACTIVITIES ---
+// --- Aqui gestionamos las actividades de un club ---
 app.get('/api/clubs/:clubId/activities', async (req, res) => {
     try {
         const result = await pool.query('SELECT activity_id as id, club_id as "organizationId", name, icon, activity_type as "activityType" FROM tul_activities WHERE club_id = $1', [req.params.clubId]);
@@ -1816,7 +1823,7 @@ app.get('/api/clubs/:clubId/activities', async (req, res) => {
 app.post('/api/clubs/:clubId/activities', async (req, res) => {
     const { name, icon, activityType } = req.body;
     try {
-        // Enforce plan activity limit
+        // Aqui comprobamos que no se supere el límite de actividades del plan del club
         const clubRes = await pool.query('SELECT plan FROM tul_clubs WHERE club_id = $1', [req.params.clubId]);
         const plan = clubRes.rows[0]?.plan || 'free';
         const limits = getPlanLimits(plan);
@@ -1860,7 +1867,7 @@ app.put('/api/clubs/:clubId/activities/:activityId', async (req, res) => {
     }
 });
 
-// --- CLUB GROUPS ---
+// --- Aqui gestionamos los grupos/clases del club ---
 app.get('/api/clubs/:clubId/groups', async (req, res) => {
     try {
         const query = `
@@ -1881,7 +1888,7 @@ app.get('/api/clubs/:clubId/groups', async (req, res) => {
 app.post('/api/clubs/:clubId/groups', async (req, res) => {
     const { activityId, name, time, maxStudents, sessions, minAge, maxAge } = req.body;
     try {
-        // Enforce plan group-per-activity limit
+        // Aqui comprobamos que no se supere el límite de grupos por actividad del plan del club
         const clubRes = await pool.query('SELECT plan FROM tul_clubs WHERE club_id = $1', [req.params.clubId]);
         const plan = clubRes.rows[0]?.plan || 'free';
         const limits = getPlanLimits(plan);
@@ -1943,8 +1950,8 @@ app.put('/api/clubs/:clubId/groups/:groupId', async (req, res) => {
     }
 });
 
-// Lightweight endpoint: returns the current belt for any user.
-// users.belt is the authoritative text column; tul_belts gives the numeric level.
+// Endpoint ligero que devuelve el cinturón actual de cualquier usuario.
+// users.belt es la columna de texto de referencia; tul_belts aporta el nivel numérico equivalente.
 app.get('/api/users/:userId/rank', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -1983,7 +1990,7 @@ app.get('/api/users/:userId/groups', async (req, res) => {
     }
 });
 
-// --- CLUB INSTRUCTORS ---
+// --- Aqui gestionamos los instructores del club ---
 app.get('/api/clubs/:clubId/instructors', async (req, res) => {
     try {
         const query = `
@@ -2055,7 +2062,7 @@ app.delete('/api/clubs/:clubId/instructors/:instructorId', async (req, res) => {
     }
 });
 
-// --- CLUB STUDENTS ---
+// --- Aqui gestionamos los alumnos del club ---
 app.get('/api/clubs/:clubId/students', async (req, res) => {
     try {
         const result = await pool.query(
@@ -2070,7 +2077,7 @@ app.get('/api/clubs/:clubId/students', async (req, res) => {
     }
 });
 
-// --- AULAS (rooms) ---
+// --- Aqui gestionamos las aulas/salas del club ---
 app.get('/api/clubs/:clubId/aulas', async (req, res) => {
     try {
         const result = await pool.query(
@@ -2148,7 +2155,7 @@ app.post('/api/clubs/:clubId/students', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'invalid_email' });
 
     try {
-        // Find user by email
+        // Buscamos al usuario por su email
         const userCheck = await pool.query("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
         if (userCheck.rows.length === 0) {
             return res.status(404).json({ error: 'not_found' });
@@ -2176,7 +2183,7 @@ app.post('/api/clubs/:clubId/students', async (req, res) => {
     }
 });
 
-// Create a brand-new student account directly (no prior account needed)
+// Aqui creamos directamente una cuenta de alumno nueva (sin que tenga que registrarse antes)
 app.post('/api/clubs/:clubId/students/create', authenticateToken, async (req, res) => {
     const { name, surname, email, phone, birthday } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'name_email_required' });
@@ -2186,7 +2193,7 @@ app.post('/api/clubs/:clubId/students/create', authenticateToken, async (req, re
         const existing = await pool.query('SELECT 1 FROM users WHERE email = $1', [emailLower]);
         if (existing.rows.length > 0) return res.status(409).json({ error: 'already_exists' });
 
-        // Generate username (same logic as /api/register)
+        // Generamos el username (misma lógica que en /api/register)
         const cleanAccents = (str) => str ? str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase() : '';
         const namePart = cleanAccents(name.trim().split(' ')[0]).substring(0, 2);
         const surnamePart = surname ? cleanAccents(surname.trim().split(' ')[0]).substring(0, 2) : 'al';
@@ -2200,7 +2207,7 @@ app.post('/api/clubs/:clubId/students/create', authenticateToken, async (req, re
         const taken = await pool.query('SELECT 1 FROM users WHERE username = $1', [username]);
         if (taken.rows.length > 0) username = `${username}${Math.floor(1000 + Math.random() * 9000)}`;
 
-        // Random readable temp password (no ambiguous chars: 0/O, 1/l/I)
+        // Generamos una contraseña temporal legible al azar (sin caracteres ambiguos: 0/O, 1/l/I)
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
         const tempPassword = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
         const hashed = await bcrypt.hash(tempPassword, 10);
@@ -2236,7 +2243,7 @@ app.delete('/api/clubs/:clubId/students/:studentId', async (req, res) => {
             "UPDATE users SET club_id = NULL WHERE user_id = $1 AND club_id = $2 AND role = 'student'",
             [req.params.studentId, req.params.clubId]
         );
-        // Also remove from any groups they were assigned to in this club
+        // Aqui también lo sacamos de cualquier grupo de este club al que estuviera apuntado
         await pool.query(
             `DELETE FROM tul_group_students gs 
              USING tul_groups g, tul_activities a
@@ -2284,7 +2291,7 @@ app.get('/api/groups/:groupId/students', async (req, res) => {
 app.post('/api/groups/:groupId/students/enroll', async (req, res) => {
     const { studentId } = req.body;
     try {
-        // Check max_students limit before enrolling
+        // Comprobamos el límite máximo de alumnos del grupo antes de matricular
         const groupRes = await pool.query(
             'SELECT max_students FROM tul_groups WHERE group_id = $1',
             [req.params.groupId]
@@ -2308,7 +2315,7 @@ app.post('/api/groups/:groupId/students/enroll', async (req, res) => {
             [req.params.groupId, studentId]
         );
         if (insertRes.rowCount > 0) {
-            // Log alta to enrollment history
+            // Registramos el alta en el histórico de matriculaciones
             const infoRes = await pool.query(
                 `SELECT u.club_id, TRIM(CONCAT(u.name,' ',COALESCE(u.surname,''))) as student_name,
                         g.name as group_name, a.name as activity_name
@@ -2335,7 +2342,7 @@ app.post('/api/groups/:groupId/students/enroll', async (req, res) => {
 
 app.delete('/api/groups/:groupId/students/:studentId/enroll', async (req, res) => {
     try {
-        // Log baja to enrollment history before deleting
+        // Registramos la baja en el histórico de matriculaciones antes de borrar
         const infoRes = await pool.query(
             `SELECT u.club_id, TRIM(CONCAT(u.name,' ',COALESCE(u.surname,''))) as student_name,
                     g.name as group_name, a.name as activity_name
@@ -2363,7 +2370,7 @@ app.delete('/api/groups/:groupId/students/:studentId/enroll', async (req, res) =
     }
 });
 
-// --- CLUB MARKET MANAGEMENT ---
+// --- Aqui gestionamos el mercado/tienda del club ---
 app.get('/api/clubs/:clubId/market', async (req, res) => {
     try {
         const isSunday = isMerchantDay();
@@ -2391,13 +2398,13 @@ app.get('/api/clubs/:clubId/market', async (req, res) => {
     }
 });
 
-// --- RPG CONSUMABLES ---
+// --- Aqui consumimos un objeto consumible del inventario y aplicamos sus efectos ---
 app.post('/api/users/:userId/inventory/:inventoryId/consume', async (req, res) => {
     const { userId, inventoryId } = req.params;
     try {
         await pool.query('BEGIN');
 
-        // Fetch item and user stats
+        // Obtenemos el objeto del inventario y comprobamos que sea realmente consumible
         const itemRes = await pool.query(`
             SELECT i.inventory_id, m.name, m.item_type, m.special_effects, m.club_id
             FROM tul_inventory i
@@ -2413,12 +2420,12 @@ app.post('/api/users/:userId/inventory/:inventoryId/consume', async (req, res) =
         const item = itemRes.rows[0];
         const effects = Array.isArray(item.special_effects) ? item.special_effects : [];
 
-        // Legacy fallback for the reset stone if effects are empty
+        // Compatibilidad con la "Piedra de Reinicio" antigua si no tiene efectos definidos
         if (effects.length === 0 && item.name === 'Piedra de Reinicio de Clase') {
             await pool.query('UPDATE tul_rpg SET rpg_class = $1 WHERE user_id = $2', ['unassigned', userId]);
         }
 
-        // Fetch user's clan if needed for clan_points
+        // Buscamos el clan del usuario, por si algún efecto necesita aportar puntos al clan
         const clanRes = await pool.query('SELECT clan_id FROM tul_clan_members WHERE user_id = $1', [userId]);
         const clanId = clanRes.rows.length > 0 ? clanRes.rows[0].clan_id : null;
 
@@ -2438,7 +2445,7 @@ app.post('/api/users/:userId/inventory/:inventoryId/consume', async (req, res) =
                         const validStats = ['strength', 'potency', 'agility', 'focus', 'vitality', 'mana_stat'];
                         if (validStats.includes(effect.stat)) {
                             await pool.query(`UPDATE tul_rpg SET ${effect.stat} = ${effect.stat} + $1 WHERE user_id = $2`, [parseInt(effect.value) || 0, userId]);
-                            // Special case: if vitality changes, max_hp changes
+                            // Caso especial: si cambia la vitalidad, recalculamos también la vida máxima
                             if (effect.stat === 'vitality') {
                                 await pool.query('UPDATE tul_rpg SET max_hp = 100 + (vitality * 10) WHERE user_id = $1', [userId]);
                             }
@@ -2463,7 +2470,9 @@ app.post('/api/users/:userId/inventory/:inventoryId/consume', async (req, res) =
                         }
                         break;
                     case 'chest':
-                        // LOOT LOGIC
+                        // Aqui sorteamos un objeto del cofre por peso: cada item tiene una probabilidad
+                        // proporcional a su "weight" sobre el total, y recorremos la lista restando pesos
+                        // hasta que el número aleatorio cae dentro del rango del item elegido
                         const poolRes = await pool.query('SELECT item_id, weight FROM tul_loot_pool WHERE chest_id = $1', [effect.chestId]);
                         if (poolRes.rows.length > 0) {
                             const totalWeight = poolRes.rows.reduce((sum, r) => sum + r.weight, 0);
@@ -2487,7 +2496,7 @@ app.post('/api/users/:userId/inventory/:inventoryId/consume', async (req, res) =
             }
         }
 
-        // Remove item
+        // Eliminamos el objeto del inventario una vez consumido
         await pool.query('DELETE FROM tul_inventory WHERE inventory_id = $1', [inventoryId]);
 
         await pool.query('COMMIT');
@@ -2575,7 +2584,7 @@ app.delete('/api/clubs/:clubId/market/:itemId', async (req, res) => {
     }
 });
 
-// --- LOOT CHEST MANAGEMENT ---
+// --- Aqui gestionamos los cofres de loot del club ---
 app.get('/api/clubs/:clubId/chests', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM tul_loot_chests WHERE club_id = $1 ORDER BY created_at DESC', [req.params.clubId]);
@@ -2672,7 +2681,7 @@ app.post('/api/market/buy', async (req, res) => {
     try {
         await pool.query('BEGIN');
 
-        // Fetch item to get correct cost
+        // Buscamos el artículo para obtener su precio real (no nos fiamos del que manda el cliente)
         const itemRes = await pool.query('SELECT cost_points FROM tul_market_items WHERE item_id = $1', [itemId]);
         if (itemRes.rows.length === 0) {
             await pool.query('ROLLBACK');
@@ -2680,7 +2689,7 @@ app.post('/api/market/buy', async (req, res) => {
         }
         const actualCost = parseFloat(itemRes.rows[0].cost_points);
 
-        // Fetch user's current points balance
+        // Consultamos el saldo de puntos actual del usuario
         const pointsRes = await pool.query('SELECT points FROM tul_puntos WHERE user_id = $1', [userId]);
         if (pointsRes.rows.length === 0) {
             await pool.query('ROLLBACK');
@@ -2693,10 +2702,10 @@ app.post('/api/market/buy', async (req, res) => {
             return res.status(400).json({ error: 'Not enough points' });
         }
 
-        // Deduct points
+        // Restamos los puntos gastados
         await pool.query('UPDATE tul_puntos SET points = points - $1 WHERE user_id = $2', [actualCost, userId]);
 
-        // Add to inventory
+        // Añadimos el artículo al inventario del usuario
         await pool.query('INSERT INTO tul_inventory (user_id, item_id) VALUES ($1, $2)', [userId, itemId]);
 
         await pool.query('COMMIT');
@@ -2707,7 +2716,7 @@ app.post('/api/market/buy', async (req, res) => {
     }
 });
 
-// NEW MERCHANT ENDPOINTS
+// --- Aqui exponemos los endpoints del mercader itinerante ---
 app.get('/api/merchant/deals', async (req, res) => {
     const { userId, clubId } = req.query;
     try {
@@ -2718,7 +2727,8 @@ app.get('/api/merchant/deals', async (req, res) => {
             return res.status(403).json({ error: 'The merchant only appears on Sundays and Tuesdays!' });
         }
 
-        // Simple seed based on date and userId to keep deals fixed for the day
+        // Generamos una semilla simple a partir de la fecha y el userId, para que las ofertas
+        // del mercader se mantengan fijas durante todo el día para ese usuario
         const seedStr = `${today}-${userId}`;
         let hash = 0;
         for (let i = 0; i < seedStr.length; i++) {
@@ -2735,7 +2745,7 @@ app.get('/api/merchant/deals', async (req, res) => {
 
         let poolItems = poolRes.rows;
         if (poolItems.length < 1) {
-            // Fallback to global items pool if club pool is empty
+            // Si el club no tiene artículos vendibles propios, recurrimos al catálogo global
             const globalRes = await pool.query(
                 `SELECT item_id as id, name, description, buy_price_min, buy_price_max, image_url, type, item_type, rarity, combat_stats
                   FROM tul_market_items 
@@ -2746,7 +2756,7 @@ app.get('/api/merchant/deals', async (req, res) => {
 
         if (poolItems.length === 0) return res.status(200).json({ deals: [] });
 
-        // Shuffle / Pick 6
+        // Generador pseudoaleatorio determinista a partir de la semilla, para elegir hasta 6 ofertas
         const seededRandom = (s) => {
             let t = s + 0x6D2B79F5;
             t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -2810,14 +2820,15 @@ app.post('/api/merchant/sell', async (req, res) => {
             return res.status(400).json({ error: 'The merchant is not interested in this item.' });
         }
 
+        // Calculamos la recompensa al azar dentro del rango de precio de venta configurado para el artículo
         const priceMin = item.sell_price_min || 10;
         const priceMax = item.sell_price_max || 50;
         const reward = Math.floor(priceMin + Math.random() * (priceMax - priceMin));
 
-        // Delete from inventory
+        // Quitamos el artículo del inventario
         await pool.query('DELETE FROM tul_inventory WHERE inventory_id = $1', [inventoryId]);
 
-        // Add points
+        // Abonamos los puntos obtenidos por la venta
         await pool.query('INSERT INTO tul_puntos (user_id, points) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET points = tul_puntos.points + $2', [userId, reward]);
 
         await pool.query('COMMIT');
@@ -2841,6 +2852,7 @@ app.get('/api/users/:userId/inventory', async (req, res) => {
         const pointsRes = await pool.query('SELECT points FROM tul_puntos WHERE user_id = $1', [req.params.userId]);
 
         const inventory = inventoryRes.rows;
+        // Sumamos el peso de todos los objetos del inventario para mostrar la carga total que lleva el usuario
         const totalWeight = inventory.reduce((sum, item) => sum + (parseFloat(item.weight) || 0), 0);
 
         res.status(200).json({
@@ -2859,7 +2871,7 @@ app.get('/api/users/:userId/points', async (req, res) => {
     try {
         const pointsRes = await pool.query('SELECT points FROM tul_puntos WHERE user_id = $1', [req.params.userId]);
 
-        // Compute streak from attendance
+        // Calculamos la racha de asistencia: contamos días consecutivos "present" empezando por el más reciente
         const attRes = await pool.query(`
             SELECT status FROM tul_attendance 
             WHERE student_id = $1 
@@ -2883,7 +2895,7 @@ app.get('/api/users/:userId/points', async (req, res) => {
 });
 
 app.post('/api/users/:userId/rpg/upgrade', async (req, res) => {
-    // The client labels the allocatable mana stat "mana_stat" (to distinguish it from the mana resource pool) — normalize it here
+    // El cliente llama "mana_stat" al atributo asignable (para distinguirlo del recurso de maná actual); aquí lo normalizamos
     const stat = req.body.stat === 'mana_stat' ? 'mana' : req.body.stat;
     const userId = req.params.userId;
 
@@ -2942,8 +2954,8 @@ app.put('/api/users/:userId/inventory/:inventoryId/equip', async (req, res) => {
         const equipStatus = isEquipped === true || isEquipped === 'true';
 
         if (equipStatus) {
-            // Un-equip logic for RPG mechanics
-            // If equipping a two-handed weapon, unequip right and left hands
+            // Aqui resolvemos qué desequipar según el slot del nuevo objeto, para que el RPG no permita combinaciones inválidas
+            // Si equipamos un arma a dos manos, desequipamos lo que hubiera en mano derecha e izquierda
             if (isTwoHanded) {
                 await pool.query(`
                     UPDATE tul_inventory SET is_equipped = false 
@@ -2953,7 +2965,7 @@ app.put('/api/users/:userId/inventory/:inventoryId/equip', async (req, res) => {
                         WHERE m.type IN ('weapon_1h_right', 'weapon_1h_left', 'weapon_2h')
                     )`, [req.params.userId]);
             }
-            // If equipping 1-handed, unequip two-handed and the same slot
+            // Si equipamos un arma a una mano, desequipamos cualquier arma a dos manos y la del mismo slot
             else if (itemType === 'weapon_1h_right' || itemType === 'weapon_1h_left') {
                 await pool.query(`
                     UPDATE tul_inventory SET is_equipped = false 
@@ -2963,7 +2975,7 @@ app.put('/api/users/:userId/inventory/:inventoryId/equip', async (req, res) => {
                         WHERE m.type IN ($2, 'weapon_2h')
                     )`, [req.params.userId, itemType]);
             }
-            // For other slots (helmet, chest, etc.), unequip items of the EXACT SAME type
+            // Para el resto de slots (casco, pechera, etc.), desequipamos solo los del mismo tipo exacto
             else {
                 await pool.query(`
                     UPDATE tul_inventory SET is_equipped = false 
@@ -2975,7 +2987,7 @@ app.put('/api/users/:userId/inventory/:inventoryId/equip', async (req, res) => {
             }
         }
 
-        // Toggle target item
+        // Aplicamos el cambio de estado (equipar/desequipar) sobre el objeto seleccionado
         await pool.query('UPDATE tul_inventory SET is_equipped = $1 WHERE inventory_id = $2 AND user_id = $3', [equipStatus, req.params.inventoryId, req.params.userId]);
 
         await pool.query('COMMIT');
@@ -2986,7 +2998,7 @@ app.put('/api/users/:userId/inventory/:inventoryId/equip', async (req, res) => {
     }
 });
 
-// --- BOSS MANAGEMENT ---
+// --- Aqui gestionamos los jefes (bosses) del club ---
 app.get('/api/clubs/:clubId/bosses', async (req, res) => {
     try {
         const result = await pool.query('SELECT boss_id as id, name, total_hp as "totalHp", image_url as "imageUrl", reward_points as "rewardPoints", is_active as "isActive", category, rarity_weight as "rarityWeight", loot_table as "lootTable", exp_reward as "expReward", attack_interval_min as "attackIntervalMin", attack_interval_max as "attackIntervalMax", min_damage as "minDamage", max_damage as "maxDamage" FROM tul_bosses WHERE club_id = $1 ORDER BY created_at DESC', [req.params.clubId]);
@@ -3000,7 +3012,7 @@ app.post('/api/clubs/:clubId/bosses', async (req, res) => {
     const { name, totalHp, imageUrl, rewardPoints, category, rarityWeight, lootTable, expReward, attackIntervalMin, attackIntervalMax, minDamage, maxDamage } = req.body;
     try {
         await pool.query('BEGIN');
-        // Deactivate previous active boss
+        // Desactivamos el jefe activo anterior, ya que solo puede haber uno activo por club
         await pool.query('UPDATE tul_bosses SET is_active = false WHERE club_id = $1', [req.params.clubId]);
 
         const result = await pool.query(
@@ -3070,7 +3082,7 @@ app.get('/api/clubs/:clubId/bosses/active', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- CLANS MANAGEMENT & BOSS SCALING ---
+// --- Aqui gestionamos los clanes y el escalado de jefes según su progreso ---
 
 app.get('/api/clubs/:clubId/clans', async (req, res) => {
     try {
@@ -3082,7 +3094,7 @@ app.get('/api/clubs/:clubId/clans', async (req, res) => {
 app.post('/api/clubs/:clubId/clans', async (req, res) => {
     try {
         const resdb = await pool.query('INSERT INTO tul_clans (club_id, name) VALUES ($1, $2) RETURNING *', [req.params.clubId, req.body.name]);
-        // Quien lo crea es primer miembro y LIDER (Fix: use single quotes for string literal)
+        // Quien crea el clan pasa a ser su primer miembro y además su líder
         await pool.query("INSERT INTO tul_clan_members (clan_id, user_id, role) VALUES ($1, $2, 'leader')", [resdb.rows[0].clan_id, req.body.userId]);
         res.status(201).json({ success: true, clan: resdb.rows[0] });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3100,7 +3112,7 @@ app.post('/api/clans/:clanId/join', async (req, res) => {
 app.post('/api/clans/:clanId/leave', async (req, res) => {
     try {
         const { userId } = req.body;
-        // Verify user is not the leader
+        // Comprobamos que quien abandona no sea el líder (el líder debe transferir o eliminar el clan)
         const roleRes = await pool.query('SELECT role FROM tul_clan_members WHERE clan_id = $1 AND user_id = $2', [req.params.clanId, userId]);
         if (roleRes.rows.length > 0 && roleRes.rows[0].role === 'leader') {
             return res.status(400).json({ error: 'El líder no puede abandonar el clan, debes eliminarlo.' });
@@ -3118,7 +3130,7 @@ app.delete('/api/clans/:clanId', async (req, res) => {
         if (roleRes.rows.length === 0 || roleRes.rows[0].role !== 'leader') {
             return res.status(403).json({ error: 'Solo el líder puede eliminar el clan.' });
         }
-        // Delete all child associations manually just in case
+        // Borramos manualmente todas las asociaciones dependientes, por si las claves foráneas no estuvieran en cascada
         try {
             await pool.query('DELETE FROM tul_clan_chat WHERE clan_id = $1', [req.params.clanId]);
             await pool.query('DELETE FROM tul_boss_participants WHERE clan_id = $1', [req.params.clanId]);
@@ -3138,12 +3150,12 @@ app.delete('/api/clans/:clanId', async (req, res) => {
 });
 
 app.get('/api/clans/:clanId/lobbies', (req, res) => {
-    // Uses the global activeLobbies declared earlier in server.js
+    // Usamos el objeto global activeLobbies declarado al principio del archivo
     const publicLobbies = Object.values(activeLobbies).filter(l => l.clanId === req.params.clanId && l.isPublic);
     res.status(200).json({ success: true, lobbies: publicLobbies });
 });
 
-// GET CLAN MEMBERS
+// Aqui devolvemos los miembros de un clan
 app.get('/api/clans/:clanId/members', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -3163,7 +3175,7 @@ app.delete('/api/clans/:clanId/members/:memberId', async (req, res) => {
         const userId = req.query.userId || req.body?.userId;
         if (!userId) return res.status(400).json({ error: 'userId requerido.' });
 
-        // Get requester's role
+        // Consultamos el rol de quien hace la petición
         const authCheck = await pool.query(
             'SELECT role FROM tul_clan_members WHERE clan_id = $1 AND user_id = $2',
             [req.params.clanId, userId]
@@ -3171,7 +3183,7 @@ app.delete('/api/clans/:clanId/members/:memberId', async (req, res) => {
         if (authCheck.rows.length === 0) return res.status(403).json({ error: 'No eres miembro de este clan.' });
         const requesterRole = authCheck.rows[0].role;
 
-        // Get target member's role
+        // Consultamos el rol del miembro al que se quiere expulsar
         const targetCheck = await pool.query(
             'SELECT role FROM tul_clan_members WHERE clan_id = $1 AND user_id = $2',
             [req.params.clanId, req.params.memberId]
@@ -3179,9 +3191,9 @@ app.delete('/api/clans/:clanId/members/:memberId', async (req, res) => {
         if (targetCheck.rows.length === 0) return res.status(404).json({ error: 'El miembro no existe.' });
         const targetRole = targetCheck.rows[0].role;
 
-        // Permission rules:
-        // - Leader can kick officers and regular members
-        // - Officer can only kick regular members (not other officers or the leader)
+        // Reglas de permisos:
+        // - El líder puede expulsar a oficiales y miembros normales
+        // - El oficial solo puede expulsar a miembros normales (no a otros oficiales ni al líder)
         if (requesterRole === 'leader') {
             if (targetRole === 'leader') return res.status(403).json({ error: 'No puedes expulsarte a ti mismo como líder.' });
         } else if (requesterRole === 'officer') {
@@ -3219,7 +3231,7 @@ app.put('/api/clans/:clanId', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- CLAN VAULT & BANK ---
+// --- Aqui gestionamos la bóveda y el banco de puntos del clan ---
 app.get('/api/clans/:clanId/vault', async (req, res) => {
     try {
         const items = await pool.query(`
@@ -3312,7 +3324,7 @@ app.get('/api/clans/:clanId/chat', async (req, res) => {
 
 app.get('/api/clans/:clanId/bosses/active', async (req, res) => {
     try {
-        // Find active boss for club
+        // Buscamos el jefe activo del club al que pertenece este clan
         const clubRes = await pool.query('SELECT club_id FROM tul_clans WHERE clan_id = $1', [req.params.clanId]);
         if (!clubRes.rows.length) return res.status(404).json({ error: 'Clan not found' });
 
@@ -3320,17 +3332,18 @@ app.get('/api/clans/:clanId/bosses/active', async (req, res) => {
         if (!bossRes.rows.length) return res.status(404).json({ error: 'No active boss for this club' });
         const boss = bossRes.rows[0];
 
-        // Seed clan boss progress if missing
+        // Si el clan todavía no tiene progreso registrado contra este jefe, lo creamos con su vida total
         await pool.query(`
             INSERT INTO tul_clan_boss_progress (clan_id, boss_id, current_hp, boss_level) 
             VALUES ($1, $2, $3, 1) 
             ON CONFLICT DO NOTHING
         `, [req.params.clanId, boss.id, boss.totalHp]);
 
-        // Fetch current clan progress
+        // Recuperamos el progreso actual del clan contra este jefe
         const progRes = await pool.query('SELECT current_hp, boss_level FROM tul_clan_boss_progress WHERE clan_id = $1 AND boss_id = $2', [req.params.clanId, boss.id]);
 
         const prog = progRes.rows[0];
+        // Cada nivel de jefe duplica su vida total: multiplicador = 2^(nivel - 1)
         const multiplier = Math.pow(2, prog.boss_level - 1);
         const effectiveTotalHp = boss.totalHp * multiplier;
 
@@ -3359,7 +3372,7 @@ app.post('/api/bosses/attack', async (req, res) => {
     try {
         await pool.query('BEGIN');
 
-        // --- 1. Persist Player HP ---
+        // --- 1. Guardamos la vida actual del jugador ---
         if (typeof playerHp === 'number') {
             await pool.query('UPDATE tul_rpg SET current_hp = $1 WHERE user_id = $2', [Math.max(0, playerHp), userId]);
         }
@@ -3377,6 +3390,7 @@ app.post('/api/bosses/attack', async (req, res) => {
             WHERE i.user_id = $1 AND i.is_equipped = true
         `, [userId]);
 
+        // Acumulamos el multiplicador de daño de todos los objetos equipados que tengan ese efecto
         let inventoryDmgMultiplier = 1.0;
         for (const row of invRes.rows) {
             if (row.combat_stats) {
@@ -3387,10 +3401,14 @@ app.post('/api/bosses/attack', async (req, res) => {
             }
         }
 
+        // Aqui calculamos el daño base por respuesta correcta según la clase RPG del jugador
+        // (cada clase pondera de forma distinta sus atributos: fuerza, potencia, agilidad, enfoque...)
         let baseDamagePerAnswer = 5;
         if (rpgClass === 'Guerrero') {
             baseDamagePerAnswer += (rpg.strength || 0) * 1.5;
         } else if (rpgClass === 'Mago') {
+            // El mago solo puede lanzar tantos hechizos como su maná disponible le permita;
+            // las respuestas que no puede pagar con maná hacen un daño "débil" de respaldo
             const manaPricePerSpell = 8;
             const affordableSpells = Math.min(correctAnswers, Math.floor((rpg.mana + (correctAnswers * 5)) / manaPricePerSpell));
             const spellDamage = (rpg.potency || 0) * 3;
@@ -3408,7 +3426,8 @@ app.post('/api/bosses/attack', async (req, res) => {
 
         const totalDamageDealt = Math.floor(correctAnswers * baseDamagePerAnswer * beltMultiplier * inventoryDmgMultiplier);
 
-        // Robust Boss Tracking: If the bossId provided is old, find the current one for the clan
+        // Aqui localizamos el jefe "real" del clan: si el bossId que envía el cliente está desactualizado
+        // (p.ej. porque el jefe cambió mientras jugaba), redirigimos el daño al jefe actual
         let progRes = await pool.query('SELECT boss_id, current_hp, boss_level, last_rare_spawn_date FROM tul_clan_boss_progress WHERE clan_id = $1 FOR UPDATE', [clanId]);
         
         if (!progRes.rows.length) {
@@ -3418,7 +3437,7 @@ app.post('/api/bosses/attack', async (req, res) => {
 
         let { boss_id: actualBossId, current_hp, boss_level, last_rare_spawn_date } = progRes.rows[0];
         
-        // If the client sent an attack for an old boss, we still apply it to the CURRENT one or just return the current state
+        // Si el cliente atacó a un jefe antiguo, aplicamos igualmente el daño al jefe vigente
         let effectiveBossId = bossId;
         if (actualBossId !== bossId) {
             console.log(`[COMBAT] Boss ID mismatch (Client: ${bossId}, DB: ${actualBossId}). Redirecting damage to current boss.`);
@@ -3431,13 +3450,16 @@ app.post('/api/bosses/attack', async (req, res) => {
         let newBossId = effectiveBossId;
         let lootEarned = [];
 
-        // ONLY respawn if boss was alive and this attack killed it
+        // Solo lanzamos la lógica de "jefe derrotado y respawn" si el jefe seguía vivo antes
+        // de este golpe y este ataque concreto lo ha llevado a 0 (evita duplicar recompensas)
         if (new_hp === 0 && wasBossAliveBeforeThisAttack && totalDamageDealt > 0) {
             const bossData = await pool.query('SELECT reward_points, total_hp, loot_table, category FROM tul_bosses WHERE boss_id = $1', [effectiveBossId]);
             const currentBoss = bossData.rows[0];
+            // La recompensa en puntos también escala con el nivel del jefe (mismo multiplicador 2^(nivel-1))
             const reward = parseInt(currentBoss.reward_points || 0) * Math.pow(2, boss_level - 1);
             const rawLootTable = currentBoss.loot_table || [];
 
+            // Repartimos la recompensa en puntos entre todos los participantes registrados de la batalla
             await pool.query(`
                 INSERT INTO tul_puntos (user_id, points)
                 SELECT user_id, $1 FROM tul_boss_participants WHERE boss_id = $2 AND clan_id = $3
@@ -3447,6 +3469,8 @@ app.post('/api/bosses/attack', async (req, res) => {
             const participantsRes = await pool.query('SELECT user_id FROM tul_boss_participants WHERE boss_id = $1 AND clan_id = $2', [effectiveBossId, clanId]);
             const participants = participantsRes.rows;
 
+            // Aqui tiramos el loot para cada participante: cada objeto de la tabla de botín tiene su propia
+            // probabilidad ("chance") y cantidad, y se evalúa de forma independiente para cada jugador
             for (const p of participants) {
                 const pLoot = [];
                 for (const lootItem of rawLootTable) {
@@ -3463,11 +3487,13 @@ app.post('/api/bosses/attack', async (req, res) => {
 
             const clubRes = await pool.query('SELECT club_id FROM tul_clans WHERE clan_id = $1', [clanId]);
             const clubId = clubRes.rows[0].club_id;
+            // Solo permitimos un jefe raro (miniboss/unique) por semana ISO; si ya salió uno esta semana, lo excluimos del sorteo
             const isSameWeek = last_rare_spawn_date ? (getCurrentISOWeek(new Date(last_rare_spawn_date)) === getCurrentISOWeek(new Date())) : false;
 
             let poolQuery = 'SELECT boss_id, total_hp FROM tul_bosses WHERE club_id = $1 AND is_active = true';
             if (isSameWeek) poolQuery += " AND category NOT IN ('miniboss', 'unique')";
 
+            // Elegimos al azar el siguiente jefe entre los activos del club y subimos de nivel (la vida vuelve a escalar con 2^(nivel-1))
             const poolRes = await pool.query(poolQuery, [clubId]);
             if (poolRes.rows.length > 0) {
                 const nextBoss = poolRes.rows[Math.floor(Math.random() * poolRes.rows.length)];
@@ -3485,10 +3511,10 @@ app.post('/api/bosses/attack', async (req, res) => {
             respawned = true;
             await pool.query('DELETE FROM tul_boss_participants WHERE boss_id = $1 AND clan_id = $2', [effectiveBossId, clanId]);
 
-            // AWARD XP ON VICTORY
-            await addXPAndCheckLevel(userId, Math.floor(totalDamageDealt / 2) + 50, 'boss_combat'); // Small bonus for killing blow
+            // Otorgamos experiencia extra por asestar el golpe que derrota al jefe
+            await addXPAndCheckLevel(userId, Math.floor(totalDamageDealt / 2) + 50, 'boss_combat'); // Pequeño bonus por el golpe de gracia
         } else {
-            // Normal hit XP
+            // Experiencia normal por el golpe (proporcional al daño infligido)
             await addXPAndCheckLevel(userId, Math.floor(totalDamageDealt / 2), 'boss_combat');
         }
 
@@ -3513,7 +3539,7 @@ app.post('/api/bosses/attack', async (req, res) => {
     }
 });
 
-// --- CLUB TRACKING ---
+// --- Aqui consultamos a qué club/clan pertenece cada usuario ---
 app.get('/api/users/:userId/clan', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -3525,6 +3551,8 @@ app.get('/api/users/:userId/clan', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }) }
 });
 
+// Aqui devolvemos las evaluaciones del club combinando las de tuls y las de categorías/rúbricas,
+// calculando para cada alumno la nota media de sus movimientos o de sus rúbricas evaluadas
 app.get('/api/clubs/:clubId/evaluations', async (req, res) => {
     try {
         const { month, from, to, activityId, instructorId } = req.query;
@@ -3616,6 +3644,8 @@ app.get('/api/clubs/:clubId/evaluations', async (req, res) => {
     }
 });
 
+// Aqui calculamos el resumen de asistencia por alumno (días presentes/total) para el club,
+// con filtros opcionales por mes/rango de fechas, actividad o instructor (vía sesiones del grupo)
 app.get('/api/clubs/:clubId/attendance', async (req, res) => {
     try {
         const { month, from, to, activityId, instructorId } = req.query;
@@ -3676,7 +3706,7 @@ app.get('/api/clubs/:clubId/report/overview', async (req, res) => {
         const { activityId, instructorId } = req.query;
         const clubId = req.params.clubId;
 
-        // Build segment filter (by activity or instructor) applied at group level
+        // Construimos el filtro de segmento (por actividad o por instructor), aplicado a nivel de grupo
         let segFilter = '';
         const segParams = [clubId];
         if (activityId) {
@@ -3690,7 +3720,7 @@ app.get('/api/clubs/:clubId/report/overview', async (req, res) => {
             )`;
         }
 
-        // Segment-scoped summary — drives the top-level KPIs (adapts to activity/instructor filter)
+        // Resumen acotado al segmento elegido (actividad o instructor) que alimenta los KPIs principales del informe
         const summaryRes = await pool.query(
             `WITH filtered_groups AS (
                 SELECT g.group_id, g.max_students
@@ -3793,7 +3823,7 @@ app.get('/api/clubs/:clubId/report/roster-changes', async (req, res) => {
         const from = req.query.from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
         const to = req.query.to || now.toISOString().split('T')[0];
 
-        // Segment filter joins enrollment_history -> tul_groups via group_id
+        // Para filtrar por segmento hace falta unir el historial de altas/bajas con tul_groups a través de group_id
         let segFilter = '';
         const params = [req.params.clubId, from, to];
         if (activityId) {
@@ -3823,7 +3853,7 @@ app.get('/api/clubs/:clubId/report/roster-changes', async (req, res) => {
         const enrolled = result.rows.filter(r => r.action === 'enrolled');
         const unenrolled = result.rows.filter(r => r.action === 'unenrolled');
 
-        // New accounts aren't tied to a specific activity/instructor — omit when segmenting
+        // Las cuentas nuevas no están ligadas a una actividad/instructor concreto, así que las omitimos si hay un filtro de segmento activo
         let newAccounts = [];
         if (!activityId && !instructorId) {
             const newAccountsRes = await pool.query(
@@ -3851,10 +3881,10 @@ app.get('/api/clubs/:clubId/report/roster-changes', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Monthly churn breakdown (last up to 12 months with data) — feeds the lifetime/duration formula:
-//   annualRetention = Π(1 - churn_i)  for each of the N months with data
-//   monthlyEquivChurn = 1 - N-th_root(annualRetention)
-//   lifetimeMonths = 1 / monthlyEquivChurn
+// Calculamos la tasa de abandono mes a mes (hasta 12 meses con datos), que alimenta la fórmula de duración media de la membresía:
+//   retencionAnual = Π(1 - abandono_i)  para cada uno de los N meses con datos
+//   abandonoMensualEquivalente = 1 - raiz_N-esima(retencionAnual)
+//   duracionMediaEnMeses = 1 / abandonoMensualEquivalente
 app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
     try {
         const { activityId, instructorId } = req.query;
@@ -3875,7 +3905,7 @@ app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
             return { filter: '', needsJoin: false };
         };
 
-        // Current segment-scoped total of enrolled students
+        // Total de alumnos inscritos actualmente, acotado al segmento elegido
         const totalParams = [clubId];
         const totalSeg = buildSegFilter(totalParams);
         const totalRes = await pool.query(
@@ -3888,7 +3918,7 @@ app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
         );
         const currentTotal = parseInt(totalRes.rows[0]?.total || 0);
 
-        // Earliest enrollment-history record available for this segment
+        // Buscamos el registro más antiguo del historial de altas/bajas disponible para este segmento
         const earliestParams = [clubId];
         const earliestSeg = buildSegFilter(earliestParams);
         const earliestJoin = earliestSeg.needsJoin ? 'JOIN tul_groups g ON h.group_id = g.group_id' : '';
@@ -3900,7 +3930,7 @@ app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
         );
         const earliest = earliestRes.rows[0]?.earliest ? new Date(earliestRes.rows[0].earliest) : null;
 
-        // Build up to 12 month windows, stopping once we run out of data
+        // Construimos hasta 12 ventanas mensuales hacia atrás, parando en cuanto nos quedamos sin datos históricos
         const now = new Date();
         const windows = [];
         for (let i = 0; i < 12; i++) {
@@ -3929,8 +3959,8 @@ app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
             );
             const bajas = parseInt(bajasRes.rows[0]?.cnt || 0);
 
-            // Reconstruct roster size at the start of this month from the current total
-            // and the net enrollment changes that happened since then.
+            // Reconstruimos cuántos alumnos había al empezar este mes partiendo del total actual
+            // y restando/sumando los altas y bajas netas que ocurrieron desde entonces.
             const sinceParams = [clubId];
             const sinceSeg = buildSegFilter(sinceParams);
             sinceParams.push(w.start.toISOString());
@@ -3959,6 +3989,8 @@ app.get('/api/clubs/:clubId/report/monthly-churn', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Aqui calculamos las estadisticas de gamificacion del club (nivel medio, distribucion de clases RPG y de niveles, top alumnos)
+// Incluimos tambien a los alumnos que estan en clanes del club aunque su club_id sea distinto, porque pueden seguir entrenando alli
 app.get('/api/clubs/:clubId/report/gamification', async (req, res) => {
     try {
         const statsRes = await pool.query(
@@ -4003,7 +4035,8 @@ app.get('/api/clubs/:clubId/report/gamification', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- ATTENDANCE SYNC ---
+// --- SINCRONIZACION DE ASISTENCIA ---
+// Aqui el instructor marca manualmente la asistencia de un alumno a una sesion concreta (sobreescribe el registro automatico si lo hay)
 app.all('/api/groups/:groupId/attendance', async (req, res) => {
     if (req.method !== 'POST' && req.method !== 'PUT') return res.status(405).end();
     const { studentId, date, status } = req.body;
@@ -4012,7 +4045,7 @@ app.all('/api/groups/:groupId/attendance', async (req, res) => {
             ? date
             : date.split('-').reverse().join('-');
         
-        // Strip time if ISO string was sent
+        // Quitamos la parte de la hora si la fecha llega como string ISO (la columna solo guarda la fecha)
         if (pgDate.includes('T')) pgDate = pgDate.split('T')[0];
 
         const existing = await pool.query(
@@ -4038,6 +4071,9 @@ app.all('/api/groups/:groupId/attendance', async (req, res) => {
     }
 });
 
+// Aqui devolvemos el historial de asistencia del grupo agrupado por fecha: para cada día calculamos
+// cuantos alumnos estuvieron presentes/llegaron tarde, cuantos faltaron y si ese registro fue generado
+// automaticamente (is_auto) o ya fue verificado a mano por el instructor
 app.get('/api/groups/:groupId/attendance/history', async (req, res) => {
     try {
         const query = `
@@ -4059,8 +4095,11 @@ app.get('/api/groups/:groupId/attendance/history', async (req, res) => {
     }
 });
 
+// Aqui devolvemos el detalle de asistencia de un grupo para un dia concreto, como un mapa
+// { student_id: 'present' | 'absent' | 'late' } que la pantalla puede usar para pintar el listado del dia
 app.get('/api/groups/:groupId/attendance/date/:date', async (req, res) => {
     try {
+        // La fecha llega en formato DD-MM-YYYY desde el cliente y la convertimos a YYYY-MM-DD para Postgres
         const pgDate = req.params.date.split('-').reverse().join('-');
         const result = await pool.query(
             "SELECT student_id, status FROM tul_attendance WHERE group_id = $1 AND date = $2",
@@ -4077,6 +4116,8 @@ app.get('/api/groups/:groupId/attendance/date/:date', async (req, res) => {
     }
 });
 
+// Aqui marcamos como "verificado a mano" un dia completo de asistencia que el sistema habia
+// generado automaticamente (is_auto = true), para que el instructor confirme que esos registros son correctos
 app.post('/api/groups/:groupId/attendance/verify', async (req, res) => {
     try {
         const { date } = req.body;
@@ -4094,7 +4135,9 @@ app.post('/api/groups/:groupId/attendance/verify', async (req, res) => {
     }
 });
 
-// --- TECHNIQUE REQUESTS (Pedir Técnica) ---
+// --- PETICIONES DE TECNICA ("Pedir Técnica") ---
+// Aqui el instructor anuncia una tecnica concreta del catalogo de vocabulario a todo el grupo; cada peticion queda
+// registrada para luego poder calificar a cada alumno individualmente sobre esa misma tecnica
 app.post('/api/groups/:groupId/technique-requests', async (req, res) => {
     try {
         const { instructorId, activityId, vocabularyId, techniqueName, imageUrl } = req.body;
@@ -4154,7 +4197,10 @@ app.post('/api/technique-requests/:requestId/evaluations', async (req, res) => {
     }
 });
 
-// --- VOCABULARY ---
+// --- VOCABULARIO (catalogo de terminos y tecnicas) ---
+// Estos endpoints gestionan el catalogo de vocabulario de un club: terminos de texto (p.ej. ingles/coreano)
+// o entradas de tipo imagen (tecnicas con foto) que luego se usan tanto en el minijuego "Reto de Tecnicas"
+// como en el flujo de "Pedir Tecnica" para anunciar una tecnica concreta al grupo
 app.get('/api/clubs/:clubId/vocabulary', async (req, res) => {
     try {
         const { maxBeltLevel, activityType, contentType, topic } = req.query;
@@ -4203,7 +4249,8 @@ app.post('/api/clubs/:clubId/vocabulary', async (req, res) => {
             return res.status(400).json({ error: 'Term is required' });
         }
         const finalContentType = contentType || 'text';
-        // Image-mode entries have no real "meaning" — fall back to the term so the NOT NULL constraint is satisfied
+        // Las entradas de tipo imagen no tienen un "significado" real (solo nombre + foto), asi que
+        // usamos el propio termino como significado para cumplir con la restriccion NOT NULL de la columna
         const finalMeaning = meaning || (finalContentType === 'image' ? term : null);
         if (!finalMeaning) {
             return res.status(400).json({ error: 'Term and meaning are required' });
@@ -4256,9 +4303,12 @@ app.delete('/api/clubs/:clubId/vocabulary/:vocabularyId', async (req, res) => {
     }
 });
 
-// (duplicate route removed — GET /api/groups/:groupId/students is handled above)
+// (ruta duplicada eliminada — GET /api/groups/:groupId/students ya esta gestionada mas arriba)
 
-// --- USER TRACKING (EVALUATIONS & ATTENDANCE) ---
+// --- SEGUIMIENTO DEL ALUMNO (EVALUACIONES Y ASISTENCIA) ---
+// Aqui registramos una evaluacion completa de Tul (movimiento por movimiento), exclusiva de Taekwondo ITF:
+// validamos que el alumno esta inscrito en una actividad de ese tipo, buscamos o creamos el Tul en el catalogo,
+// guardamos la cabecera de la evaluacion y cada movimiento puntuado, y otorgamos una pequeña recompensa de experiencia
 app.post('/api/evaluations', async (req, res) => {
     const { studentId, instructorId, tulName, tulId, summaryComment, movements, activityId } = req.body;
 
@@ -4273,7 +4323,7 @@ app.post('/api/evaluations', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // TULs only conceptually belong to Taekwondo ITF: confirm the activity is classified as such AND the student is enrolled in it
+        // Los Tuls solo tienen sentido en Taekwondo ITF: comprobamos que la actividad es de ese tipo Y que el alumno esta inscrito en ella
         const activityCheck = await client.query(`
             SELECT a.activity_id
             FROM tul_activities a
@@ -4290,14 +4340,14 @@ app.post('/api/evaluations', async (req, res) => {
             return res.status(403).json({ error: 'Student is not enrolled in a Taekwondo ITF activity.' });
         }
 
-        // Find tul by exact name, then case-insensitive, then auto-create if still not found
+        // Buscamos el Tul primero por nombre exacto, luego ignorando mayusculas/minusculas, y si aun asi no existe lo creamos
         let tulRes = await client.query('SELECT tul_id FROM tul_tuls WHERE name = $1', [tulName]);
         if (tulRes.rows.length === 0) {
             tulRes = await client.query('SELECT tul_id FROM tul_tuls WHERE LOWER(name) = LOWER($1)', [tulName]);
         }
         if (tulRes.rows.length === 0) {
-            // Auto-create the tul so evaluations are never blocked by a missing catalog entry
-            // Plain INSERT is safe here: both SELECTs above confirmed it doesn't exist yet
+            // Creamos el Tul automaticamente para que una evaluacion nunca quede bloqueada por faltar en el catalogo
+            // El INSERT directo es seguro aqui: las dos consultas SELECT de arriba ya confirmaron que no existe todavia
             tulRes = await client.query(
                 'INSERT INTO tul_tuls (name) VALUES ($1) RETURNING tul_id',
                 [tulName]
@@ -4305,7 +4355,8 @@ app.post('/api/evaluations', async (req, res) => {
         }
         const realTulId = tulRes.rows[0].tul_id;
 
-        // Insert Evaluation — always stores tul_name as text for resilience
+        // Guardamos la cabecera de la evaluacion — siempre almacenamos tul_name como texto plano para mayor resiliencia
+        // (asi el historico no se rompe aunque el Tul cambie de nombre o se elimine del catalogo mas adelante)
         const evalRes = await client.query(
             `INSERT INTO tul_evaluations (student_id, instructor_id, tul_id, tul_name, summary_comment, activity_id)
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING evaluation_id`,
@@ -4314,7 +4365,7 @@ app.post('/api/evaluations', async (req, res) => {
 
         const evaluationId = evalRes.rows[0].evaluation_id;
 
-        // Insert Movements
+        // Guardamos la puntuacion y el comentario de cada movimiento individual del Tul
         for (const mov of movements) {
             await client.query(
                 `INSERT INTO tul_evaluation_movements (evaluation_id, move_index, score, comment)
@@ -4323,7 +4374,7 @@ app.post('/api/evaluations', async (req, res) => {
             );
         }
 
-        // Small exp reward for completing a TUL evaluation (Taekwondo-only by the validation above)
+        // Pequeña recompensa de experiencia por completar una evaluacion de Tul (solo Taekwondo, segun la validacion de arriba)
         await addXPAndCheckLevel(studentId, 25, 'tul_evaluation', activityId);
 
         await client.query('COMMIT');
@@ -4337,8 +4388,9 @@ app.post('/api/evaluations', async (req, res) => {
     }
 });
 
-// Generic category-rubric evaluation (Inglés/Ballet — anything with an EVALUATION_RUBRICS catalog entry).
-// Taekwondo ITF keeps using POST /api/evaluations + the TUL move-by-move flow above, untouched.
+// Evaluacion generica por categorias/rubrica (Inglés, Ballet... cualquier actividad con su propia entrada en EVALUATION_RUBRICS).
+// Taekwondo ITF sigue usando POST /api/evaluations y el flujo de Tul movimiento por movimiento de arriba, sin tocar.
+// Aqui guardamos una cabecera de evaluacion y una puntuacion+comentario por cada categoria de la rubrica de esa actividad
 app.post('/api/category-evaluations', async (req, res) => {
     const { studentId, instructorId, activityId, summaryComment, scores } = req.body;
 
@@ -4350,7 +4402,7 @@ app.post('/api/category-evaluations', async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Confirm the activity uses the category-rubric flow (not Taekwondo ITF) and the student is enrolled in it
+        // Comprobamos que la actividad usa el flujo de rubrica por categorias (no Taekwondo ITF) y que el alumno esta inscrito en ella
         const activityCheck = await client.query(`
             SELECT a.activity_id, a.activity_type
             FROM tul_activities a
@@ -4397,6 +4449,9 @@ app.post('/api/category-evaluations', async (req, res) => {
     }
 });
 
+// Aqui devolvemos TODAS las evaluaciones de un alumno (Tul, categoria/rubrica y tecnica) fusionadas en una
+// unica lista ordenada por fecha. Si llegan los parametros opcionales month/year filtramos cada consulta para
+// que el informe mensual de ProfileScreen solo muestre las evaluaciones de ese mes; sin ellos se devuelve el historico completo
 app.get('/api/users/:userId/evaluations', async (req, res) => {
     try {
         const { month, year } = req.query;
@@ -4479,7 +4534,8 @@ app.get('/api/users/:userId/evaluations', async (req, res) => {
             pool.query(categoryQuery, [req.params.userId, ...monthFilterParams]),
             pool.query(techniqueQuery, [req.params.userId, ...monthFilterParams])
         ]);
-        // Handle postgres json_agg returning null for empty arrays
+        // Postgres devuelve null (no un array vacio) cuando json_agg no encuentra filas, asi que normalizamos
+        // a [] y formateamos la puntuacion media a un decimal para que el frontend no tenga que preocuparse de esos casos
         const tulEvaluations = tulResult.rows.map(r => ({
             ...r,
             evaluationType: 'tul',
@@ -4507,6 +4563,8 @@ app.get('/api/users/:userId/evaluations', async (req, res) => {
     }
 });
 
+// Aqui devolvemos la asistencia de un alumno como un mapa { 'YYYY-MM-DD': estado } para pintar el calendario
+// de asistencia; igual que en evaluaciones, month/year son opcionales y permiten acotar el informe a un mes concreto
 app.get('/api/users/:userId/attendance', async (req, res) => {
     try {
         const { month, year } = req.query;
@@ -4523,7 +4581,7 @@ app.get('/api/users/:userId/attendance', async (req, res) => {
             : [req.params.userId];
         const result = await pool.query(query, params);
 
-        // Transform the array into the object map format required by the frontend
+        // Transformamos el array de filas en el formato de mapa { fecha: estado } que espera el frontend
         const attendanceMap = {};
         result.rows.forEach(r => {
             attendanceMap[r.date_key] = r.status;
@@ -4535,16 +4593,19 @@ app.get('/api/users/:userId/attendance', async (req, res) => {
     }
 });
 
-// --- RPG PROGRESSION HELPERS ---
+// --- AYUDANTES DE PROGRESION RPG ---
+// Aqui calculamos cuanta experiencia hace falta para subir del nivel indicado al siguiente
 const getRequiredXPForLevel = (level) => {
     // 1->2: 100, 2->3: 300, 3->4: 600, 4->5: 1000...
     return 50 * level * (level + 1);
 };
 
+// Aqui traducimos el nombre/grado de un cinturon a un multiplicador de daño para las batallas contra jefes:
+// cuanto mas alto el grado, mayor el multiplicador (de Blanco x1 hasta IX Dan x20)
 const getBeltDamageMultiplier = (beltName, beltLevel) => {
-    // White is 1, IX Dan is 20.
-    // Belts are usually: White, Yellow, Green, Blue, Red, Black
-    // Black is I Dan to IX Dan.
+    // El cinturon Blanco vale 1, el IX Dan vale 20.
+    // El orden habitual es: Blanco, Amarillo, Verde, Azul, Rojo, Negro.
+    // El Negro va de I Dan a IX Dan.
     const name = (beltName || '').toLowerCase();
     if (name.includes('ix dan')) return 20;
     if (name.includes('viii dan')) return 18.5;
@@ -4556,15 +4617,17 @@ const getBeltDamageMultiplier = (beltName, beltLevel) => {
     if (name.includes('ii dan')) return 10.5;
     if (name.includes('i dan')) return 10;
 
-    // Color belts: White(1), Yellow(2.5), Green(4), Blue(5.5), Red(7), Black(8.5)
+    // Cinturones de color: Blanco(1), Amarillo(2.5), Verde(4), Azul(5.5), Rojo(7), Negro(8.5)
     if (name.includes('negro')) return 8.5;
     if (name.includes('rojo')) return 7;
     if (name.includes('azul')) return 5.5;
     if (name.includes('verde')) return 4;
     if (name.includes('amarillo')) return 2.5;
-    return 1; // Blanco or default
+    return 1; // Blanco o por defecto
 };
 
+// Aqui sumamos experiencia a un alumno y comprobamos si sube de nivel; si sube, aumentamos su vida maxima,
+// le damos puntos de habilidad para repartir y registramos la ganancia en el log de experiencia (para estadisticas/depuracion)
 async function addXPAndCheckLevel(userId, expToAdd, source = 'unknown', activityId = null) {
     const rpgRes = await pool.query('SELECT * FROM tul_rpg WHERE user_id = $1', [userId]);
     if (rpgRes.rows.length === 0) return;
@@ -4580,7 +4643,7 @@ async function addXPAndCheckLevel(userId, expToAdd, source = 'unknown', activity
         leveledUp = true;
         skillPointsGained += 1;
 
-        // Base stat increases (Legacy - now we give skill points too)
+        // Subida de estadisticas base al subir de nivel (sistema antiguo — ahora ademas damos puntos de habilidad para repartir)
         max_hp = (max_hp || 100) + 10;
     }
 
@@ -4600,8 +4663,10 @@ async function addXPAndCheckLevel(userId, expToAdd, source = 'unknown', activity
 
 
 // --- PUNTOS Y RACHAS ---
-// (Logic consolidated above at line 1751)
+// (La logica principal de puntos y rachas ya esta consolidada mas arriba, sobre la linea 1751)
 
+// Aqui sumamos puntos de juego a un alumno (p.ej. al acertar una pregunta de vocabulario), aplicando
+// multiplicadores por racha de asistencia y por posibles "buffs" activos, curamos algo de vida y damos experiencia
 app.post('/api/users/:userId/points/add', async (req, res) => {
     const { basePoints } = req.body;
     const bp = parseInt(basePoints) || 0;
@@ -4616,7 +4681,8 @@ app.post('/api/users/:userId/points/add', async (req, res) => {
 
         const multiplier = Math.min(5, 1 + Math.floor(streak / 5) * 0.5);
 
-        // --- BUFF MULTIPLIER ---
+        // --- MULTIPLICADOR POR "BUFF" ACTIVO ---
+        // Si el alumno tiene algun potenciador activo (comprado en el mercado, por ejemplo) tomamos el mayor multiplicador vigente
         const buffRes = await pool.query('SELECT MAX(multiplier) as buff FROM tul_active_buffs WHERE user_id = $1 AND expires_at > NOW()', [req.params.userId]);
         const buffMultiplier = buffRes.rows[0].buff ? parseFloat(buffRes.rows[0].buff) : 1.0;
 
@@ -4627,11 +4693,11 @@ app.post('/api/users/:userId/points/add', async (req, res) => {
             [req.params.userId, pointsToAdd]
         );
 
-        // Heal player by 5 HP per correct answer (bp)
+        // Curamos al jugador 5 puntos de vida por cada respuesta correcta (bp = puntos base ganados)
         const hpToHeal = bp * 5;
         await pool.query('UPDATE tul_rpg SET current_hp = LEAST(max_hp, current_hp + $1) WHERE user_id = $2', [hpToHeal, req.params.userId]);
 
-        // Also add XP (Fixed to 1 XP per question as requested)
+        // Tambien sumamos experiencia (fijada a 1 XP por pregunta, segun lo solicitado)
         const progress = await addXPAndCheckLevel(req.params.userId, 1, 'vocabulary');
 
         const newTotalRes = await pool.query('SELECT points FROM tul_puntos WHERE user_id = $1', [req.params.userId]);
@@ -4644,7 +4710,11 @@ app.post('/api/users/:userId/points/add', async (req, res) => {
     }
 });
 
-// --- PHASE 12: HUBSPOT BI-DIRECTIONAL SYNC ---
+// --- FASE 12: SINCRONIZACION BIDIRECCIONAL CON HUBSPOT ---
+// Aqui mantenemos sincronizados los contactos de HubSpot (CRM) con los usuarios de la app en ambas direcciones:
+// 1) traemos contactos de HubSpot que no existan todavia como usuario y los creamos, y
+// 2) empujamos a HubSpot los usuarios de la app que no tengan contacto alli. Se ejecuta por cron cada noche
+// y tambien puede lanzarse a mano desde el panel de administracion (force-sync)
 const runHubSpotBiDirectionalSync = async () => {
     const token = process.env.HUBSPOT_ACCESS_TOKEN;
     if (!token) {
@@ -4654,7 +4724,7 @@ const runHubSpotBiDirectionalSync = async () => {
 
     console.log('Starting Bi-directional HubSpot Sync...');
     try {
-        // Step 1: Pull ONLY from HubSpot to Learning Dungeon using Pagination
+        // Paso 1: Traer SOLO desde HubSpot hacia la app, recorriendo todas las paginas de resultados
         let hubspotContacts = [];
         let after = undefined;
         let hasMore = true;
@@ -4685,8 +4755,8 @@ const runHubSpotBiDirectionalSync = async () => {
 
         console.log(`HubSpot Sync: Successfully pulled ${hubspotContacts.length} contacts from CRM.`);
 
-        // Check against our DB
-        // 1. Fetch all existing users efficiently in one query to avoid 2000+ SELECTs
+        // Comparamos contra nuestra base de datos
+        // 1. Traemos todos los emails existentes en una sola consulta para evitar lanzar 2000+ SELECTs sueltos
         const existingUsersRes = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
         const existingEmails = new Set(existingUsersRes.rows.map(r => r.email.toLowerCase()));
 
@@ -4697,7 +4767,7 @@ const runHubSpotBiDirectionalSync = async () => {
             const email = props.email.toLowerCase();
             if (!existingEmails.has(email)) {
                 try {
-                    // Determine Username
+                    // Generamos un nombre de usuario a partir del nombre y apellido (sin acentos, en minusculas)
                     const cleanAccents = (str) => str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : '';
                     const namePart = cleanAccents(props.firstname || '').substring(0, 2);
                     const surnamePart = cleanAccents(props.lastname || '').substring(0, 2) || 'es';
@@ -4706,7 +4776,7 @@ const runHubSpotBiDirectionalSync = async () => {
                     const checkUsername = await pool.query('SELECT 1 FROM users WHERE username = $1', [baseUsername]);
                     if (checkUsername.rows.length > 0) baseUsername = `${baseUsername}${Math.floor(10000 + Math.random() * 90000)}`;
 
-                    // Generate completely random secure baseline password
+                    // Generamos una contrase\u00f1a base totalmente aleatoria y segura (el usuario podra cambiarla despues)
                     const randomPassword = require('crypto').randomBytes(12).toString('hex');
                     const hashedPassword = await bcrypt.hash(randomPassword, 10);
 
@@ -4722,14 +4792,14 @@ const runHubSpotBiDirectionalSync = async () => {
             }
         }
 
-        // Step 2: Push missing Learning Dungeon users to HubSpot
+        // Paso 2: Empujar a HubSpot los usuarios de la app que falten alli
         const dbUsers = await pool.query('SELECT name, surname, email, phone FROM users');
         const hubspotEmails = new Set(hubspotContacts.map(c => c.properties.email?.toLowerCase()).filter(Boolean));
 
         for (const user of dbUsers.rows) {
             if (!user.email || hubspotEmails.has(user.email.toLowerCase())) continue;
 
-            // Missing in HubSpot, push it safely
+            // Falta en HubSpot: lo creamos alli de forma segura (sin interrumpir el resto si falla uno)
             try {
                 await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
                     method: 'POST',
@@ -4745,7 +4815,7 @@ const runHubSpotBiDirectionalSync = async () => {
                 });
                 console.log(`HubSpot Sync: Pushed missing user to HubSpot -> ${user.email}`);
             } catch (err) {
-                // Ignore silent failures if 1 particular row drops
+                // Ignoramos en silencio el fallo de un registro suelto para no interrumpir el resto de la sincronizacion
             }
         }
 
@@ -4755,32 +4825,34 @@ const runHubSpotBiDirectionalSync = async () => {
     }
 };
 
-// Schedule it to run every day at 00:00 (Midnight)
+// Programamos la sincronizacion para que se ejecute todos los dias a las 00:00 (medianoche)
 cron.schedule('0 0 * * *', () => {
     runHubSpotBiDirectionalSync();
 });
 
-// Cleanup expired buffs every hour
+// Limpiamos los "buffs" caducados cada hora para que dejen de aplicar su multiplicador
 cron.schedule('0 * * * *', async () => {
     try {
         await pool.query('DELETE FROM tul_active_buffs WHERE expires_at < NOW()');
     } catch (e) { console.error('Buff cleanup error:', e); }
 });
 
-// Force-Sync admin endpoint
+// Endpoint de administracion para forzar la sincronizacion con HubSpot manualmente
 app.post('/api/admin/force-sync', authenticateToken, requireSuperadmin, async (req, res) => {
-    // Fire and forget so we don't stall the request if sync takes a while
+    // La lanzamos "en segundo plano" (sin esperar) para no bloquear la respuesta si la sincronizacion tarda
     runHubSpotBiDirectionalSync();
     res.status(200).json({ success: true, message: 'Sync process triggered in the background' });
 });
 
-// --- BELTS & PROMOTIONS ---
+// --- CINTURONES Y ASCENSOS ---
+// Aqui devolvemos el catalogo de cinturones (orden y nombre de cada grado) que se usa para mostrar la
+// progresion del alumno y calcular ascensos
 app.get('/api/belts', async (req, res) => {
     try {
         const result = await pool.query('SELECT belt_level, name FROM tul_belts ORDER BY belt_level ASC');
 
         if (result.rows.length === 0) {
-            // Self-healing: if belts table is empty, seed it on demand!
+            // Auto-reparacion: si la tabla de cinturones esta vacia, la rellenamos con los valores por defecto al vuelo
             try {
                 await pool.query('ALTER TABLE tul_belts ADD CONSTRAINT belts_belt_level_key UNIQUE(belt_level)').catch(() => { });
             } catch (e) { }
@@ -4818,22 +4890,24 @@ app.get('/api/belts', async (req, res) => {
     }
 });
 
-// Note: PUT /api/users/:userId/belt is defined earlier (merged route handles both
-// self-updates and instructor/owner-assigned promotions via assigned_by_user_id)
+// Nota: PUT /api/users/:userId/belt esta definido mas arriba (esa ruta combinada gestiona tanto
+// las actualizaciones que hace el propio alumno como los ascensos asignados por instructor/dueño via assigned_by_user_id)
 
-// --- SUPPORT TICKETS SYSTEM ---
+// --- SISTEMA DE TICKETS DE SOPORTE ---
 const nodemailer = require('nodemailer');
-// Configure your SMTP credentials in .env (e.g., EMAIL_USER, EMAIL_PASS)
+// Las credenciales SMTP se configuran en el .env (por ejemplo EMAIL_USER, EMAIL_PASS)
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, // Use SSL
+    secure: true, // Usamos SSL
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     }
 });
 
+// Aqui un usuario crea un nuevo ticket de soporte: lo guardamos en la base de datos y, si hay credenciales
+// SMTP configuradas, enviamos un correo de aviso a la bandeja de la empresa de forma asincrona (sin bloquear la respuesta)
 app.post('/api/support', async (req, res) => {
     const { userId, subject, description } = req.body;
     console.log(`[SUPPORT] RECEIVE: User=${userId}, Subj=${subject}`);
@@ -4842,10 +4916,10 @@ app.post('/api/support', async (req, res) => {
     try {
         const client = await pool.connect();
         try {
-            // Use the authenticated userId (may be null for unauthenticated support submissions)
+            // Usamos el userId autenticado (puede ser null si el envio de soporte se hizo sin iniciar sesion)
             const dbUserId = userId || null;
 
-            // Register ticket in DB (Always default to Learning Dungeon as an array)
+            // Registramos el ticket en la base de datos (siempre etiquetado por defecto como array ['Learning Dungeon'])
             const result = await client.query(
                 'INSERT INTO tickets_registrosoporte (user_id, subject, description, app_label) VALUES ($1, $2, $3, $4) RETURNING id',
                 [dbUserId, subject, description, ['Learning Dungeon']]
@@ -4853,11 +4927,11 @@ app.post('/api/support', async (req, res) => {
             const ticketId = result.rows[0].id;
             console.log(`[SUPPORT] Ticket #${ticketId} registered in DB.`);
 
-            // Try to send email to the company/admin inbox (asynchronous to avoid client hang)
+            // Intentamos enviar un correo a la bandeja de la empresa/administracion (de forma asincrona para no colgar al cliente)
             if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
                 transporter.sendMail({
                     from: process.env.EMAIL_USER,
-                    to: process.env.EMAIL_USER, // Send to themselves (the company inbox)
+                    to: process.env.EMAIL_USER, // Se envia a si misma (la bandeja de la empresa)
                     subject: `[Learning Dungeon Support] Ticket #${ticketId}: ${subject}`,
                     text: `New support ticket from User ID: ${userId}\n\nSubject: ${subject}\n\nDescription:\n${description}`
                 }).then(() => {
@@ -4879,7 +4953,7 @@ app.post('/api/support', async (req, res) => {
     }
 });
 
-// Add this with other admin endpoints
+// Aqui devolvemos la lista de superadministradores (para mostrarla, por ejemplo, en pantallas de gestion/soporte)
 app.get('/api/admin/superadmins', authenticateToken, requireSuperadmin, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -4895,7 +4969,8 @@ app.get('/api/admin/superadmins', authenticateToken, requireSuperadmin, async (r
     }
 });
 
-// Admin-only Support Tickets fetch
+// Aqui devolvemos el listado completo de tickets de soporte para el panel de administracion,
+// incluyendo datos del usuario que lo creo y de la persona asignada para resolverlo
 app.get('/api/support', async (req, res) => {
     try {
         const result = await pool.query(`
@@ -4919,12 +4994,12 @@ app.get('/api/support', async (req, res) => {
     }
 });
 
-// Update Support Ticket (Status/Response)
+// Aqui actualizamos un ticket de soporte (estado, respuesta del equipo, prioridad, fecha limite, persona asignada y etiquetas de app)
 app.put('/api/support/:id', async (req, res) => {
     const { status, devResponse, priority, dueDate, assignedTo, appLabel } = req.body;
     console.log(`[SUPPORT] Updating Ticket #${req.params.id}`, { status, priority, appLabel });
     try {
-        // Ensure appLabel is an array if it's not (for safety)
+        // Nos aseguramos de que appLabel sea siempre un array (por seguridad, ante datos inesperados)
         const finalAppLabels = Array.isArray(appLabel) ? appLabel : (appLabel ? [appLabel] : ['Learning Dungeon']);
 
         await pool.query(
@@ -4949,13 +5024,16 @@ app.put('/api/support/:id', async (req, res) => {
     }
 });
 
-// --- GLOBAL CONTENT SYNC ---
+// --- SINCRONIZACION GLOBAL DE CONTENIDO ---
+// Aqui copiamos vocabulario, jefes y articulos de mercado desde un club "origen" (por defecto Aim Education)
+// hacia el club global compartido (GLOBAL_ID), evitando duplicados por nombre/termino — utilidad de administracion
+// para poblar el contenido global a partir del contenido ya creado en un club de referencia
 app.post('/api/admin/global-sync', authenticateToken, requireSuperadmin, async (req, res) => {
     const { sourceClubName } = req.body;
     const GLOBAL_ID = '00000000-0000-4000-a000-000000000000';
     try {
         console.log(`[SYNC] Starting sync. Source Name Provided: "${sourceClubName}"`);
-        // Robust lookup: use % and trim just in case
+        // Busqueda flexible: usamos comodines % por si el nombre no coincide exactamente
         const sourceSearch = sourceClubName ? `%${sourceClubName}%` : '%Aim Education%';
         const clubRes = await pool.query('SELECT club_id, name FROM tul_clubs WHERE name ILIKE $1 ORDER BY created_at ASC LIMIT 1', [sourceSearch]);
 
@@ -4967,10 +5045,10 @@ app.post('/api/admin/global-sync', authenticateToken, requireSuperadmin, async (
         const sourceId = clubRes.rows[0].club_id;
         console.log(`[SYNC] Found source: ${clubRes.rows[0].name} (ID: ${sourceId})`);
 
-        // Check counts before
+        // Contamos cuantas entradas de vocabulario tiene el club global antes de sincronizar (para referencia/depuracion)
         const beforeVocab = await pool.query('SELECT count(*) FROM tul_vocabulary WHERE club_id = $1', [GLOBAL_ID]);
 
-        // Sync Vocabulary (Avoid duplicates by term)
+        // Copiamos el vocabulario evitando duplicados (comparando por termino)
         const vocabRes = await pool.query(`
             INSERT INTO tul_vocabulary (club_id, term, meaning)
             SELECT $1, v.term, v.meaning 
@@ -4983,7 +5061,7 @@ app.post('/api/admin/global-sync', authenticateToken, requireSuperadmin, async (
             RETURNING vocabulary_id
         `, [GLOBAL_ID, sourceId]);
 
-        // Sync Bosses (Avoid duplicates by name)
+        // Copiamos los jefes evitando duplicados (comparando por nombre)
         const bossRes = await pool.query(`
             INSERT INTO tul_bosses (club_id, name, total_hp, image_url, reward_points)
             SELECT $1, b.name, b.total_hp, b.image_url, b.reward_points 
@@ -4996,7 +5074,7 @@ app.post('/api/admin/global-sync', authenticateToken, requireSuperadmin, async (
             RETURNING boss_id
         `, [GLOBAL_ID, sourceId]);
 
-        // Sync Market Items (Avoid duplicates by name)
+        // Copiamos los articulos del mercado evitando duplicados (comparando por nombre)
         const marketRes = await pool.query(`
             INSERT INTO tul_market_items (club_id, name, description, cost_points, type, image_url, stock)
             SELECT $1, m.name, m.description, m.cost_points, m.type, m.image_url, m.stock 
@@ -5026,11 +5104,11 @@ app.post('/api/admin/global-sync', authenticateToken, requireSuperadmin, async (
     }
 });
 
-// --- SPA CATCH-ALL (MUST BE LAST) ---
-// Serve static files from the Expo web export directory ('dist')
+// --- COMODIN PARA LA SPA (DEBE IR SIEMPRE AL FINAL) ---
+// Servimos los archivos estaticos generados por la exportacion web de Expo (carpeta 'dist')
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// For any other route, serve the index.html file.
+// Para cualquier otra ruta no reconocida, servimos el index.html para que el enrutado lo gestione el cliente (SPA)
 app.use((req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
@@ -5038,7 +5116,7 @@ app.use((req, res) => {
 initDB().then(() => {
     server.listen(PORT, () => {
         console.log(`Universal App server is running on port ${PORT} `);
-        // Run auto-attendance in the background AFTER the server is ready
+        // Lanzamos la generacion automatica de asistencia en segundo plano una vez el servidor esta listo
         generateAutoAttendance();
         setInterval(generateAutoAttendance, 1000 * 60 * 60 * 4);
     });

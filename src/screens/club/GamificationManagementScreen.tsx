@@ -13,6 +13,7 @@ export const GamificationManagementScreen = ({ route }: any) => {
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Aqui configuramos las tarjetas del menu de gestion: cada una enlaza con su pantalla via navigation.navigate(option.route)
     const managementOptions = [
         {
             title: "Vocabulario 'Jumbi'",
@@ -26,7 +27,7 @@ export const GamificationManagementScreen = ({ route }: any) => {
             description: "Crea recompensas físicas o virtuales y asígnales un valor. Los alumnos las comprarán con sus puntos.",
             icon: "storefront-outline",
             route: "MarketManagement",
-            color: "#FFD700", // Dorado
+            color: "#FFD700", // Color dorado para destacar la tarjeta del Mercado
         },
         {
             title: "Jefes y Monstruos (Bosses)",
@@ -51,6 +52,7 @@ export const GamificationManagementScreen = ({ route }: any) => {
             <ScrollView contentContainerStyle={styles.content}>
                 <Text style={styles.subtitle}>Selecciona el módulo que deseas configurar para tu club:</Text>
 
+                {/* Pintamos cada opcion como una tarjeta pulsable; el color de borde e icono viene de option.color */}
                 <View style={styles.grid}>
                     {managementOptions.map((option, index) => (
                         <TouchableOpacity

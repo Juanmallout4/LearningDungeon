@@ -1,12 +1,17 @@
+// Define el aspecto visual de cada cinturón: nombre mostrado, grado (gup/dan), color principal,
+// color del texto, color de la "punta" (cinturones bicolor) y borde opcional
+// (necesario para que el cinturón blanco se distinga sobre fondos claros).
 export interface BeltConfig {
     name: string;
     gup: string;
     mainColor: string;
     textColor: string;
     tipColor?: string;
-    borderColor?: string; // For white belt visibility on white bg (if applicable)
+    borderColor?: string; // Borde para que el cinturón blanco se vea sobre fondo blanco (si aplica)
 }
 
+// Catálogo de cinturones de Taekwondo ITF indexado por nivel numérico (0 = blanco, 10+ = grados Dan).
+// Aqui podemos configurar el nombre, grado, colores y borde de cada cinturón mostrado en la UI
 export const BELT_CONFIGS: Record<number, BeltConfig> = {
     0: {
         name: 'Blanco',
@@ -19,8 +24,8 @@ export const BELT_CONFIGS: Record<number, BeltConfig> = {
         name: 'Blanco-Amarillo',
         gup: '9º Gup',
         mainColor: '#FFFFFF',
-        tipColor: '#FFE135', // Yellow
-        textColor: '#FFE135', // Yellow text
+        tipColor: '#FFE135', // Amarillo
+        textColor: '#FFE135', // Texto amarillo
         borderColor: '#333333'
     },
     2: {
@@ -33,8 +38,8 @@ export const BELT_CONFIGS: Record<number, BeltConfig> = {
         name: 'Amarillo-Verde',
         gup: '7º Gup',
         mainColor: '#FFE135',
-        tipColor: '#2E8B57', // Green
-        textColor: '#2E8B57' // Green text
+        tipColor: '#2E8B57', // Verde
+        textColor: '#2E8B57' // Texto verde
     },
     4: {
         name: 'Verde',
@@ -46,8 +51,8 @@ export const BELT_CONFIGS: Record<number, BeltConfig> = {
         name: 'Verde-Azul',
         gup: '5º Gup',
         mainColor: '#2E8B57',
-        tipColor: '#0057B7', // Blue
-        textColor: '#0057B7' // Blue text
+        tipColor: '#0057B7', // Azul
+        textColor: '#0057B7' // Texto azul
     },
     6: {
         name: 'Azul',
@@ -59,8 +64,8 @@ export const BELT_CONFIGS: Record<number, BeltConfig> = {
         name: 'Azul-Rojo',
         gup: '3º Gup',
         mainColor: '#0057B7',
-        tipColor: '#CE1126', // Red
-        textColor: '#CE1126' // Red text
+        tipColor: '#CE1126', // Rojo
+        textColor: '#CE1126' // Texto rojo
     },
     8: {
         name: 'Rojo',
@@ -92,5 +97,5 @@ export const BELT_CONFIGS: Record<number, BeltConfig> = {
     18: { name: 'IX Dan', gup: 'Negro', mainColor: '#000000', textColor: 'theme', borderColor: '#333333' }
 };
 
-// Helper mapping for BELT_RANKS to keep types/index.ts compatible if needed,
-// or we just switch to using this config.
+// Nota: mapeo auxiliar pensado para mantener compatibilidad con BELT_RANKS de types/index.ts,
+// o para migrar por completo a esta configuración más adelante.

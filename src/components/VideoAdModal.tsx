@@ -9,9 +9,12 @@ interface VideoAdModalProps {
     onClose: () => void;
 }
 
-const TOTAL_DURATION = 15;
-const SKIP_THRESHOLD = 5;
+const TOTAL_DURATION = 15; // Aqui podemos configurar cuantos segundos dura el anuncio simulado
+const SKIP_THRESHOLD = 5; // Aqui podemos configurar a partir de que segundo se habilita el boton de "saltar"
 
+// Modal de anuncio simulado a pantalla completa: cuenta hacia atras desde TOTAL_DURATION y, al llegar
+// a SKIP_THRESHOLD segundos transcurridos, habilita el boton de saltar; si el usuario no lo cierra antes,
+// se cierra solo al llegar a 0
 export const VideoAdModal: React.FC<VideoAdModalProps> = ({ visible, onClose }) => {
     const { theme } = useTheme();
     const { t } = useTranslation();
@@ -21,6 +24,8 @@ export const VideoAdModal: React.FC<VideoAdModalProps> = ({ visible, onClose }) 
     const [canSkip, setCanSkip] = useState(false);
 
     useEffect(() => {
+        // Reiniciamos el contador cada vez que el modal se hace visible y arrancamos un intervalo
+        // de 1 segundo que va descontando el tiempo restante y habilitando el "saltar" cuando corresponda
         let interval: NodeJS.Timeout;
 
         if (visible) {
@@ -35,7 +40,7 @@ export const VideoAdModal: React.FC<VideoAdModalProps> = ({ visible, onClose }) 
                     }
                     if (next <= 0) {
                         clearInterval(interval);
-                        onClose(); // Auto close when timer reaches 0
+                        onClose(); // Cerramos automaticamente el anuncio al llegar a 0 segundos
                         return 0;
                     }
                     return next;
@@ -94,7 +99,7 @@ export const VideoAdModal: React.FC<VideoAdModalProps> = ({ visible, onClose }) 
 const createStyles = (theme: AppTheme) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#000000', // Ads are usually full black background
+        backgroundColor: '#000000', // Los anuncios suelen tener fondo negro completo
         justifyContent: 'center',
     },
     header: {

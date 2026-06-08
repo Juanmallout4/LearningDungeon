@@ -48,7 +48,8 @@ export const HomeScreen = () => {
     const videoWidth = Math.min(width, 600) - 32;
     const videoHeight = videoWidth * (9 / 16);
     const [twoColCardDims, setTwoColCardDims] = useState({ width: 0, height: 0 });
-    // Fit 16:9 video within card bounds (minus padding overhead)
+    // Calculamos el tamaño máximo del vídeo (16:9) que cabe dentro de la tarjeta de la columna,
+    // restando el padding/cabecera para no desbordar el contenedor
     const twoColInnerW = Math.max(twoColCardDims.width - 32, 0);
     const twoColMaxH  = Math.max(twoColCardDims.height - 200, 80);
     const twoColVideoW = twoColInnerW > 0
@@ -60,12 +61,15 @@ export const HomeScreen = () => {
     const [minRank, setMinRank] = useState<number>(0);
     const [maxRank, setMaxRank] = useState<number>(user?.rank || 0);
     const [pickerMode, setPickerMode] = useState<'min' | 'max' | 'select' | null>(null);
-    // Each activity type has its own Práctica dashboard (TUL practice for Taekwondo, level + evaluation summary for Inglés/Ballet).
-    // "Practicing" an activity means either being actively enrolled in one of its groups, or holding a personal
-    // progression record for it (covers instructors/club owners with a personal rank who aren't enrolled as students).
+    // Cada tipo de actividad tiene su propio panel de Práctica (TULs para Taekwondo, nivel + resumen
+    // de evaluaciones para Inglés/Ballet). Consideramos que el usuario "practica" una actividad si
+    // está matriculado en uno de sus grupos, o si tiene un registro de progresión personal
+    // (cubre instructores/dueños de club con rango propio que no están matriculados como alumnos)
     const [practicedActivities, setPracticedActivities] = useState<PracticedActivity[] | null>(null);
     const [selectedPracticeActivityId, setSelectedPracticeActivityId] = useState<string | null>(null);
 
+    // Si no llega un usuario por parámetros de navegación, intentamos recuperar la sesión guardada;
+    // si tampoco existe, mandamos al usuario de vuelta a la pantalla de Login
     useEffect(() => {
         const verifyUser = async () => {
             if (!user) {
@@ -83,6 +87,9 @@ export const HomeScreen = () => {
         verifyUser();
     }, [user]);
 
+    // Construye la lista de actividades que el usuario practica combinando tres fuentes:
+    // grupos en los que está matriculado, progresiones personales y (para dueños de club)
+    // las actividades que ofrece su organización. Se usa un Map para deduplicar por activityId.
     useEffect(() => {
         const loadPracticedActivities = async () => {
             if (!user?.id) return;
@@ -92,7 +99,7 @@ export const HomeScreen = () => {
                     ClubService.getUserProgressions(user.id),
                 ]);
                 const merged = new Map<string, PracticedActivity>();
-                // Enrollment data wins (carries live group context: name, current level for that group)
+                // Los datos de matrícula tienen prioridad (traen contexto vivo: nombre y nivel actual del grupo)
                 groups.forEach(g => {
                     if (!g.activityType || !g.activityId) return;
                     merged.set(g.activityId, {
@@ -103,8 +110,8 @@ export const HomeScreen = () => {
                         levelName: g.progressionLevelName ?? null,
                     });
                 });
-                // Personal progression rows fill in practitioners who aren't (or aren't currently) enrolled,
-                // e.g. a club owner/instructor holding a rank without being a student in an active group
+                // Las filas de progresión personal completan a quienes no están (o ya no están) matriculados,
+                // por ejemplo un dueño de club/instructor con rango propio sin ser alumno de un grupo activo
                 progressions.forEach(p => {
                     if (!merged.has(p.activityId)) {
                         merged.set(p.activityId, {
@@ -116,12 +123,12 @@ export const HomeScreen = () => {
                         });
                     }
                 });
-                // Club owners get oversight of every activity their club offers — not just the ones they
-                // personally practice — so they can check in on each activity's Práctica view (their own
-                // dashboards will simply show "no level/evaluations yet" for activities they don't study).
-                // This runs BEFORE the legacy belt fallback below so that an owner's real Taekwondo activity
-                // (with its proper name) is the one that fills the "do they practice Taekwondo?" slot —
-                // otherwise the fallback would add a second, unnamed synthetic entry alongside it.
+                // Damos a los dueños de club visibilidad sobre todas las actividades de su club —no solo
+                // las que practican ellos— para que puedan revisar el panel de Práctica de cada una (su
+                // propio dashboard mostrará simplemente "sin nivel/evaluaciones" si no la estudian).
+                // Esto se ejecuta ANTES del fallback de cinturón heredado de abajo, para que la actividad
+                // real de Taekwondo del dueño (con su nombre correcto) sea la que ocupe ese hueco
+                // y el fallback no añada una segunda entrada sintética sin nombre junto a ella.
                 if (user.role === 'club_owner' && user.organizationId) {
                     const clubActivities = await ClubService.getActivities(user.organizationId);
                     clubActivities.forEach(a => {
@@ -136,10 +143,10 @@ export const HomeScreen = () => {
                         });
                     });
                 }
-                // Legacy/global belt fallback: some accounts (e.g. club owners set up at registration time)
-                // carry users.belt_level/rank > 0 for Taekwondo without ever having an enrollment or a
-                // tul_user_progression row (that table is only populated via group backfill or promotion).
-                // Without this, a IX-Dan club owner with no group/progression rows would see no dashboard at all.
+                // Fallback de cinturón heredado/global: algunas cuentas (p.ej. dueños de club creados en el
+                // registro) tienen users.belt_level/rank > 0 para Taekwondo sin ninguna matrícula ni fila en
+                // tul_user_progression (esa tabla solo se rellena por backfill de grupo o promoción).
+                // Sin esto, un dueño de club IX-Dan sin grupos/progresiones no vería ningún panel.
                 if (user.rank > 0 && !Array.from(merged.values()).some(a => a.activityType === 'taekwondo_itf')) {
                     merged.set('__legacy_taekwondo_rank__', {
                         activityType: 'taekwondo_itf',
@@ -152,7 +159,8 @@ export const HomeScreen = () => {
                 setPracticedActivities(Array.from(merged.values()));
             } catch (error) {
                 console.error('Failed to load practiced activities for practice dashboard', error);
-                // Fail open on Taekwondo so existing users keep seeing their TUL dashboard on a transient error
+                // Si falla la carga, asumimos Taekwondo por defecto para que los usuarios existentes
+                // sigan viendo su panel de TULs ante un error puntual
                 setPracticedActivities([{ activityType: 'taekwondo_itf', activityId: null, activityName: null, levelOrder: null, levelName: null }]);
             }
         };
@@ -163,11 +171,12 @@ export const HomeScreen = () => {
         return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
     }
 
-    // Filter valid Tuls
+    // Filtra de TULS_DATA solo los tuls cuyo requisito de rango cae dentro del rango min-max elegido
     const getPlayableTuls = () => {
         return TULS_DATA.filter(t => t.rankRequirement >= minRank && t.rankRequirement <= maxRank);
     };
 
+    // Elige al azar un tul de entre los disponibles en el rango actual y lo muestra en pantalla
     const handleRandomize = () => {
         const pool = getPlayableTuls();
         if (pool.length === 0) {
@@ -191,10 +200,10 @@ export const HomeScreen = () => {
 
     const handleSelectRank = (rank: number) => {
         if (pickerMode === 'min') {
-            if (rank > maxRank) setMaxRank(rank); // Auto-adjust max
+            if (rank > maxRank) setMaxRank(rank); // Ajustamos el máximo automáticamente si el mínimo lo supera
             setMinRank(rank);
         } else if (pickerMode === 'max') {
-            if (rank < minRank) setMinRank(rank); // Auto-adjust min
+            if (rank < minRank) setMinRank(rank); // Ajustamos el mínimo automáticamente si el máximo es menor
             setMaxRank(rank);
         }
         setPickerMode(null);
@@ -203,25 +212,27 @@ export const HomeScreen = () => {
         navigation.navigate('Settings', { user });
     };
 
+    // Aqui sacamos la configuración visual (color, nombre, gup) del cinturón actual del usuario
     const userRankConfig = BELT_CONFIGS[user?.rank ?? 0] || BELT_CONFIGS[0];
 
-    // Pick which practiced activity's dashboard to show: respect an explicit user choice (the switcher),
-    // otherwise default to Taekwondo ITF (most developed dashboard, historical default) or the first one found.
+    // Decide qué panel de actividad practicada mostrar: respeta la elección explícita del usuario
+    // (el selector de pastillas), y si no hay ninguna, prioriza Taekwondo ITF (panel más completo,
+    // valor histórico por defecto) o, en su defecto, la primera actividad de la lista
     const selectedActivity: PracticedActivity | null = practicedActivities && practicedActivities.length > 0
         ? (practicedActivities.find(a => a.activityId === selectedPracticeActivityId)
             || practicedActivities.find(a => a.activityType === 'taekwondo_itf')
             || practicedActivities[0])
         : null;
 
-    // Inglés/Ballet (and any future rubric-based activity type) get the generic dashboard; Taekwondo keeps its own.
+    // Inglés/Ballet (y cualquier futura actividad basada en rúbricas) usan el panel genérico; Taekwondo conserva el suyo
     const showActivityDashboard = !!selectedActivity && selectedActivity.activityType !== 'taekwondo_itf' && !!EVALUATION_RUBRICS[selectedActivity.activityType];
-    // Only show the "nothing to practice" empty state once loading has finished and the selection isn't Taekwondo
-    // (Taekwondo and the loading state both fall through to the existing TUL dashboard layout below)
+    // Solo mostramos el estado vacío "nada que practicar" cuando ya terminó la carga y la selección no es Taekwondo
+    // (tanto Taekwondo como el estado de carga caen en el layout de panel de TULs de siempre, más abajo)
     const showNoPracticeEmptyState = practicedActivities !== null && !showActivityDashboard && selectedActivity?.activityType !== 'taekwondo_itf';
 
     return (
         <View style={styles.container}>
-            {/* Header */}
+            {/* Cabecera: saludo, cinturón actual, logo del club (si aplica) y accesos rápidos */}
             <View style={styles.header}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{ justifyContent: 'center', paddingTop: 12 }}>
@@ -263,7 +274,7 @@ export const HomeScreen = () => {
                             </TouchableOpacity>
                         )}
                     </View>
-                    {/* Activity switcher: only shown when the user practices more than one activity with its own dashboard */}
+                    {/* Selector de actividad: solo aparece si el usuario practica más de una actividad con panel propio */}
                     {practicedActivities && practicedActivities.length > 1 && (
                         <View style={[styles.headerActivitySwitcherRow, { justifyContent: 'flex-end' }]}>
                             {practicedActivities.map(activity => {
@@ -286,7 +297,7 @@ export const HomeScreen = () => {
             </View>
 
             {showActivityDashboard && selectedActivity ? (
-                /* ── Generic per-activity dashboard for Inglés/Ballet (and any future rubric-based activity) ── */
+                /* ── Panel genérico por actividad para Inglés/Ballet (y futuras actividades basadas en rúbricas) ── */
                 <View style={styles.content}>
                     <ActivityPracticeDashboard
                         activityType={selectedActivity.activityType}
@@ -298,7 +309,7 @@ export const HomeScreen = () => {
                     />
                 </View>
             ) : showNoPracticeEmptyState ? (
-                /* ── No practiced activities with their own Práctica dashboard yet ── */
+                /* ── Aún no hay actividades practicadas con panel de Práctica propio ── */
                 <View style={styles.content}>
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyText}>{t('home.noPracticeActivities', { defaultValue: 'Todavía no participas en ninguna actividad con seguimiento de práctica. ¡Pregunta a tu club sobre las clases disponibles!' })}</Text>
@@ -311,9 +322,9 @@ export const HomeScreen = () => {
                     )}
                 </View>
             ) : currentTul && Platform.OS === 'web' && width > 768 ? (
-                /* ── Two-column layout (web + tul selected) ── */
+                /* ── Layout a dos columnas (web + tul seleccionado y pantalla ancha) ── */
                 <View style={styles.contentRow}>
-                    {/* Left: video card fills remaining space */}
+                    {/* Columna izquierda: la tarjeta de vídeo ocupa el espacio restante */}
                     <View style={styles.tulCard} onLayout={(e) => setTwoColCardDims({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
                         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.tulCardContent} showsVerticalScrollIndicator={false}>
                             <Text style={styles.tulName}>{currentTul.name}</Text>
@@ -335,7 +346,7 @@ export const HomeScreen = () => {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Right: controls + range stacked vertically */}
+                    {/* Columna derecha: controles y selector de rango apilados verticalmente */}
                     <View style={styles.sidePanel}>
                         <TouchableOpacity style={styles.chooseTulButton} onPress={() => setPickerMode('select')}>
                             <Ionicons name="list-outline" size={22} color={theme.colors.primary} />
@@ -365,8 +376,9 @@ export const HomeScreen = () => {
                     </View>
                 </View>
             ) : (
-                /* ── Standard single-column layout ── */
+                /* ── Layout estándar a una sola columna (móvil o pantalla estrecha) ── */
                 <View style={styles.content}>
+                    {/* El banner del mercader solo aparece domingos (0) y martes (2) */}
                     {[0, 2].includes(new Date().getDay()) && (
                         <TouchableOpacity
                             style={styles.merchantBanner}
@@ -438,7 +450,7 @@ export const HomeScreen = () => {
                 </View>
             )}
 
-            {/* Selection Modal (Reused for Tul Select and Rank Picker) */}
+            {/* Modal de selección reutilizado tanto para elegir un Tul como para elegir un cinturón (min/max) */}
             <Modal
                 animationType="slide"
                 transparent={true}
@@ -644,7 +656,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         color: '#FFF',
         fontWeight: 'bold',
         fontSize: 28,
-        marginTop: -2, // Visual adjustment
+        marginTop: -2, // Ajuste visual para centrar el símbolo "+"
     },
     emptyState: {
         flex: 1,
@@ -724,7 +736,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontSize: 16,
         marginLeft: 8,
     },
-    // Modal Styles
+    // Aqui configuramos los estilos del modal de selección (overlay, contenido, cabecera, items)
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.8)',

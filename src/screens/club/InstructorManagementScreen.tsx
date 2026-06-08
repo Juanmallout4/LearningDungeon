@@ -27,7 +27,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
     const [activities, setActivities] = useState<Activity[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
 
-    // Activity assignment modal
+    // Aqui gestionamos el modal de asignación de actividades a un instructor (qué disciplinas puede impartir)
     const [isActivityModalVisible, setIsActivityModalVisible] = useState(false);
     const [selectedInstructorForActivities, setSelectedInstructorForActivities] = useState<{ id: string; name: string } | null>(null);
     const [pendingActivityIds, setPendingActivityIds] = useState<Set<string>>(new Set());
@@ -38,7 +38,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
     const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
     const [selectedInstructorBirthday, setSelectedInstructorBirthday] = useState<string | null>(null);
 
-    // Age helper (same as StudentManagementScreen)
+    // Calcula la edad a partir de la fecha de nacimiento (misma lógica que en StudentManagementScreen)
     const getPersonAge = (birthday: string | null): number | null => {
         if (!birthday) return null;
         const birth = new Date(birthday);
@@ -50,13 +50,13 @@ export const InstructorManagementScreen = ({ route }: any) => {
         return age;
     };
 
-    // Password Reset State
+    // Aqui controlamos el modal de restablecimiento de contraseña forzado para instructores
     const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
     const [selectedInstructorForPassword, setSelectedInstructorForPassword] = useState<{ id: string, name: string } | null>(null);
     const [newPassword, setNewPassword] = useState('');
     const [isResettingPassword, setIsResettingPassword] = useState(false);
 
-    // Filter & Belts State
+    // Aqui guardamos el texto de búsqueda de la lista y el estado del modal de promoción de cinturón/nivel del instructor
     const [searchQuery, setSearchQuery] = useState('');
     const [isBeltModalVisible, setIsBeltModalVisible] = useState(false);
     const [selectedInstructorForBelt, setSelectedInstructorForBelt] = useState<{ id: string, name: string, currentBelt?: string } | null>(null);
@@ -65,6 +65,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
     const [selectedProgressionActivity, setSelectedProgressionActivity] = useState<ProgressionActivityOption | null>(null);
     const [isLoadingProgressionActivities, setIsLoadingProgressionActivities] = useState(false);
 
+    // Esta pantalla solo es accesible para propietarios de club con plan Pro/Elite; si no se cumple, avisamos y volvemos atrás
     useEffect(() => {
         if (user.role !== 'club_owner' || (user.plan !== 'club_pro' && user.plan !== 'club_elite')) {
             Alert.alert(t('settings.limitReached'), t('settings.upgradeToPro'));
@@ -78,10 +79,11 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     }, [user]);
 
+    // Trae los instructores del club y los reordena para que el/los propietarios aparezcan siempre primero en la lista
     const loadInstructors = async () => {
         try {
             const data = await ClubService.getInstructors(user.organizationId);
-            // Club owners surface at the top of the list regardless of the order the API returns them in
+            // Los dueños del club aparecen arriba de la lista sin importar el orden en que los devuelva la API
             const sorted = [...data].sort((a, b) => (a.role === 'club_owner' ? 0 : 1) - (b.role === 'club_owner' ? 0 : 1));
             setInstructors(sorted);
         } catch (error) {
@@ -89,6 +91,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Trae todos los grupos/actividades del club, usados en el modal de asignación de grupos
     const loadGroups = async () => {
         try {
             const data = await ClubService.getAllClubGroups(user.organizationId);
@@ -98,6 +101,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Añade al club un instructor que ya tiene cuenta en la app, mapeando los códigos de error del backend a mensajes traducidos
     const handleAddInstructor = async () => {
         if (!email.trim() || !user.organizationId) return;
 
@@ -127,10 +131,11 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Pide confirmación (window.confirm en web, Alert nativo en móvil) y ejecuta la expulsión del instructor del club
     const handleRemoveInstructor = (id: string, name: string) => {
         const title = t('instructor.removeInstructorTitle', { defaultValue: 'Remove Instructor?' });
         const message = t('instructor.removeInstructorBody', { defaultValue: 'Are you sure you want to remove {{name}} from your club?', name });
-        
+
         const performRemoval = async () => {
             try {
                 if (!user.organizationId) return;
@@ -161,10 +166,11 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de asignación de grupos para el instructor: carga sus grupos actuales y arranca con las secciones colapsadas
     const openGroupModal = async (instructorId: string, birthday?: string | null) => {
         setSelectedInstructorId(instructorId);
         setSelectedInstructorBirthday(birthday || null);
-        // Start with all sections collapsed
+        // Empezamos con todas las secciones de actividad colapsadas
         setExpandedActivities(new Set());
         try {
             const groupsAssociated = await ClubService.getStudentGroups(instructorId);
@@ -175,6 +181,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         setIsGroupModalVisible(true);
     };
 
+    // Pinta una fila de grupo dentro del modal de asignación, marcando si el instructor ya está en él, si es recomendado y si está lleno
     const renderGroupRow = (g: Group, recommended: boolean) => {
         const isEnrolled = instructorGroups.has(g.id);
         const isFull = g.maxStudents != null && g.studentCount >= g.maxStudents;
@@ -207,6 +214,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         );
     };
 
+    // Expande o colapsa la sección de grupos de una actividad concreta dentro del modal
     const toggleActivityExpand = (activityId: string) => {
         setExpandedActivities(prev => {
             const next = new Set(prev);
@@ -216,6 +224,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         });
     };
 
+    // Inscribe o desinscribe al instructor de un grupo concreto, actualizando el set local de grupos según el resultado
     const handleToggleGroup = async (groupId: string) => {
         if (!selectedInstructorId) return;
         try {
@@ -240,12 +249,14 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de actividades del instructor, precargando como "pendientes" las actividades que ya tiene asignadas
     const openActivityModal = (id: string, name: string, currentActivityIds: string[] = []) => {
         setSelectedInstructorForActivities({ id, name });
         setPendingActivityIds(new Set(currentActivityIds));
         setIsActivityModalVisible(true);
     };
 
+    // Guarda en el backend el conjunto de actividades seleccionadas para el instructor y actualiza la lista local
     const handleSaveActivities = async () => {
         if (!selectedInstructorForActivities || !user.organizationId) return;
         setIsSavingActivities(true);
@@ -263,12 +274,14 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de restablecimiento de contraseña para el instructor indicado, limpiando el campo
     const openPasswordModal = (id: string, name: string) => {
         setSelectedInstructorForPassword({ id, name });
         setNewPassword('');
         setIsPasswordModalVisible(true);
     };
 
+    // Fuerza una contraseña temporal nueva para el instructor mediante la ruta admin del backend (mínimo 6 caracteres)
     const handleResetPassword = async () => {
         if (!selectedInstructorForPassword || newPassword.length < 6) {
             Alert.alert(t('common.error', { defaultValue: 'Error' }), 'Password must be at least 6 characters long.');
@@ -297,6 +310,8 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de promoción: a diferencia de los alumnos (que se basan en sus grupos), aquí partimos de las actividades
+    // ASIGNADAS al instructor y cruzamos con sus progresiones actuales para construir las opciones disponibles
     const openBeltModal = async (id: string, name: string, currentBelt?: string) => {
         setSelectedInstructorForBelt({ id, name, currentBelt });
         setSelectedProgressionActivity(null);
@@ -305,6 +320,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         setIsBeltModalVisible(true);
         try {
             const instructor = instructors.find(i => i.id === id);
+            // Solo consideramos actividades asignadas al instructor que además tengan un sistema de progresión soportado
             const assignedActivities = activities.filter(a =>
                 instructor?.activityIds?.includes(a.id) && a.activityType && PROGRESSION_ACTIVITY_TYPES.includes(a.activityType)
             );
@@ -328,6 +344,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Asigna al instructor un nuevo nivel/cinturón en la actividad seleccionada y refresca su cinturón visible si es Taekwondo ITF
     const handleAssignBelt = async (levelOrder: number, levelName: string) => {
         if (!selectedInstructorForBelt || !selectedProgressionActivity || !user.id) return;
         setIsUpdatingBelt(true);
@@ -345,6 +362,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Filtra la lista de instructores por nombre o email según el texto de búsqueda
     const filteredInstructors = instructors.filter(i =>
         i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         i.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -426,6 +444,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                     <View style={{ flex: 1 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                             <Text style={styles.instructorName}>{instructor.name}</Text>
+                                            {/* Distinguimos visualmente al dueño del club dentro de la lista de instructores */}
                                             {instructor.role === 'club_owner' && (
                                                 <View style={{ backgroundColor: theme.colors.secondary + '22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
                                                     <Text style={{ color: theme.colors.secondary, fontSize: 11, fontWeight: '700' }}>{t('settings.clubOwner', { defaultValue: 'Dueño del club' })}</Text>
@@ -433,6 +452,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                             )}
                                         </View>
                                         <Text style={styles.instructorEmail}>{instructor.email}</Text>
+                                        {/* Mostramos como insignias las actividades que tiene asignadas (resolviendo el id contra la lista de actividades del club) */}
                                         {instructor.activityIds && instructor.activityIds.length > 0 && (
                                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
                                                 {instructor.activityIds.map(aid => {
@@ -449,6 +469,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                     </View>
                                 </View>
                                 <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    {/* El botón de promoción solo está disponible para el dueño del club o instructores con rango suficiente (>= 10) */}
                                     {(user.role === 'club_owner' || (user.role === 'instructor' && user.rank >= 10)) && (
                                         <TouchableOpacity style={[styles.assignButton, { backgroundColor: theme.colors.secondary }]} onPress={() => openBeltModal(instructor.id, instructor.name, instructor.belt)}>
                                             <Ionicons name="star" size={20} color="white" />
@@ -469,6 +490,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                     <TouchableOpacity style={styles.assignButton} onPress={() => openGroupModal(instructor.id, instructor.birthday)}>
                                         <Ionicons name="list" size={20} color="white" />
                                     </TouchableOpacity>
+                                    {/* No se puede expulsar al dueño del club de la lista de instructores */}
                                     {instructor.role !== 'club_owner' && (
                                         <TouchableOpacity
                                             style={styles.removeButton}
@@ -484,13 +506,13 @@ export const InstructorManagementScreen = ({ route }: any) => {
                 </View>
             </ScrollView>
 
-            {/* Group Assignment Modal */}
+            {/* Modal de asignación de grupos al instructor, organizado por actividad con secciones plegables */}
             <Modal visible={isGroupModalVisible} transparent animationType="fade" onRequestClose={() => setIsGroupModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>{t('settings.assignGroup', { defaultValue: 'Assign to Group' })}</Text>
 
-                        {/* Age badge if birthday is known */}
+                        {/* Insignia con la edad del instructor, solo si conocemos su fecha de nacimiento */}
                         {(() => {
                             const age = getPersonAge(selectedInstructorBirthday);
                             if (age === null) return null;
@@ -507,7 +529,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                 {t('settings.noGroupsActivity', { defaultValue: 'You must create Activities and Groups first in the Instructors panel.' })}
                             </Text>
                         ) : (() => {
-                            // Build activity map
+                            // Agrupamos los grupos del club por actividad para pintar una sección plegable por cada una
                             const activityMap = new Map<string, { name: string; icon: string; groups: Group[] }>();
                             groups.forEach(g => {
                                 if (!activityMap.has(g.activityId)) {
@@ -524,7 +546,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                         const enrolledCount = actGroups.filter(g => instructorGroups.has(g.id)).length;
                                         const isExpanded = expandedActivities.has(actId);
 
-                                        // Age-based recommendations (only for groups with explicit age range)
+                                        // Recomendaciones basadas en la edad: solo se consideran los grupos con un rango de edad explícito
                                         const recommended = instructorAge !== null
                                             ? actGroups.filter(g => {
                                                 if (g.minAge == null && g.maxAge == null) return false;
@@ -537,7 +559,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
 
                                         return (
                                             <View key={actId}>
-                                                {/* Activity header */}
+                                                {/* Cabecera de la actividad: pulsándola se expande/colapsa la lista de sus grupos */}
                                                 <TouchableOpacity
                                                     style={styles.activityHeader}
                                                     onPress={() => toggleActivityExpand(actId)}
@@ -565,10 +587,10 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                                     </View>
                                                 </TouchableOpacity>
 
-                                                {/* Groups list */}
+                                                {/* Lista de grupos de la actividad, separados en recomendados y otros */}
                                                 {isExpanded && (
                                                     <View style={{ marginTop: 2 }}>
-                                                        {/* Recommended */}
+                                                        {/* Grupos recomendados según la edad del instructor */}
                                                         {recommended.length > 0 && (
                                                             <View style={styles.recommendedSection}>
                                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 5 }}>
@@ -580,7 +602,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                                                 {recommended.map(g => renderGroupRow(g, true))}
                                                             </View>
                                                         )}
-                                                        {/* Others */}
+                                                        {/* Resto de grupos que no encajan en el rango de edad recomendado */}
                                                         {others.length > 0 && (
                                                             <View>
                                                                 {recommended.length > 0 && (
@@ -607,7 +629,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Activity Assignment Modal */}
+            {/* Modal para elegir qué actividades/disciplinas imparte el instructor (selección múltiple con checkboxes) */}
             <Modal visible={isActivityModalVisible} transparent animationType="fade" onRequestClose={() => setIsActivityModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -653,7 +675,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Password Reset Modal */}
+            {/* Modal para forzar una contraseña temporal nueva al instructor */}
             <Modal visible={isPasswordModalVisible} transparent animationType="fade" onRequestClose={() => setIsPasswordModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -684,12 +706,13 @@ export const InstructorManagementScreen = ({ route }: any) => {
                 </View>
             </Modal>
 
-            {/* Progression Promotion Modal */}
+            {/* Modal de promoción de cinturón/nivel del instructor: el contenido cambia según el número y tipo de actividades de progresión */}
             <Modal visible={isBeltModalVisible} transparent animationType="fade" onRequestClose={() => setIsBeltModalVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Promover Instructor</Text>
 
+                        {/* Cargando -> indicador. Sin actividades de progresión -> aviso. Varias -> selector. Una sola -> directo a elegir nivel */}
                         {isLoadingProgressionActivities ? (
                             <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 24 }} />
                         ) : progressionActivityOptions.length === 0 ? (
@@ -719,6 +742,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                 />
                             </>
                         ) : selectedProgressionActivity.activityType === 'taekwondo_itf' ? (
+                            // Para Taekwondo ITF mostramos la lista de cinturones (BELT_CONFIGS), filtrada por el rango de quien promociona
                             <>
                                 {selectedProgressionActivity.currentLevelName && (
                                     <View style={{ position: 'absolute', top: 16, right: 16 }}>
@@ -746,6 +770,7 @@ export const InstructorManagementScreen = ({ route }: any) => {
                                 />
                             </>
                         ) : (
+                            // Para el resto de actividades, usamos la escala de progresión genérica de PROGRESSION_SCALES según su tipo
                             <>
                                 {selectedProgressionActivity.currentLevelName && (
                                     <View style={{ position: 'absolute', top: 16, right: 16 }}>

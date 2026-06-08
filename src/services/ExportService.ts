@@ -3,6 +3,8 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 
+// Forma de los datos que alimentan el reporte exportable del club: KPIs generales, desglose por actividad,
+// listado de alumnos del periodo y, opcionalmente, bloques de retención y gamificación (solo se incluyen si existen)
 export interface FullReportData {
     clubName: string;
     periodLabel: string;
@@ -41,12 +43,17 @@ export interface FullReportData {
     };
 }
 
+// Construye el documento HTML completo del reporte (con estilos inline) que luego se convierte a PDF o se imprime.
+// Usa pequeños helpers (kpiBox, sectionTitle) para montar bloques repetidos y solo añade las secciones de
+// retención/gamificación si vienen presentes en los datos.
 const buildPdfHtml = (d: FullReportData): string => {
     const dateStr = new Date().toLocaleDateString('es-ES');
 
+    // Tarjeta pequeña con un valor destacado y su etiqueta (para la fila de KPIs)
     const kpiBox = (label: string, value: string) =>
         `<div class="kpi-box"><div class="kpi-val">${value}</div><div class="kpi-label">${label}</div></div>`;
 
+    // Encabezado de sección con estilo uniforme
     const sectionTitle = (title: string) =>
         `<h2 class="section-title">${title}</h2>`;
 
@@ -71,6 +78,7 @@ const buildPdfHtml = (d: FullReportData): string => {
             <td style="text-align:center;color:${s.attendanceRate < 70 ? '#d32f2f' : '#388e3c'};font-weight:bold">${s.attendanceRate.toFixed(0)}%</td>
         </tr>`).join('');
 
+    // Sección opcional de retención: solo se renderiza si hay datos de retención en el reporte
     const retentionSection = d.retention ? `
         ${sectionTitle('Retención')}
         <div class="kpi-row">
@@ -81,6 +89,7 @@ const buildPdfHtml = (d: FullReportData): string => {
             ${d.retention.duracionMedia != null ? kpiBox('Duración Media Alta', `${d.retention.duracionMedia.toFixed(1)} m`) : ''}
         </div>` : '';
 
+    // Sección opcional de gamificación: nivel medio, distribución por clase/nivel y ranking de mejores alumnos
     const gamSection = d.gamification ? (() => {
         const classRows = Object.entries(d.gamification!.classDist).map(([cls, cnt]) =>
             `<tr><td>${cls}</td><td style="text-align:center">${cnt}</td></tr>`).join('');
@@ -183,6 +192,8 @@ const buildPdfHtml = (d: FullReportData): string => {
 </html>`;
 };
 
+// Construye el contenido del CSV línea a línea (formato compatible con Excel: comillas dobles y separación por comas),
+// replicando las mismas secciones que el PDF (KPIs, actividades, alumnos, retención y gamificación opcionales)
 const buildCsvContent = (d: FullReportData): string => {
     const dateStr = new Date().toLocaleDateString('es-ES');
     const lines: string[] = [];
@@ -256,6 +267,9 @@ const buildCsvContent = (d: FullReportData): string => {
 };
 
 export const ExportService = {
+    // Genera el reporte en PDF a partir de FullReportData. En web monta un iframe oculto, escribe el HTML
+    // dentro y dispara window.print() (el usuario elige "Guardar como PDF" en el diálogo nativo del navegador);
+    // en nativo usa expo-print para generar el archivo y expo-sharing para compartirlo/guardarlo
     exportToPDF: async (data: FullReportData) => {
         try {
             const html = buildPdfHtml(data);
@@ -290,6 +304,8 @@ export const ExportService = {
         }
     },
 
+    // Genera el reporte en CSV. En web crea un Blob con BOM UTF-8 y simula un click en un enlace de descarga;
+    // en nativo escribe el archivo en el directorio de caché/documentos con expo-file-system y lo comparte con expo-sharing
     exportToCSV: async (data: FullReportData) => {
         try {
             const csvData = buildCsvContent(data);

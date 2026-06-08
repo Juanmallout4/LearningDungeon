@@ -25,9 +25,11 @@ export const BeltDisplay: React.FC<BeltDisplayProps> = ({
 }) => {
     const { theme } = useTheme();
     const { t } = useTranslation();
+    // Buscamos la configuracion visual (colores, nombre, gup) correspondiente al rango numerico recibido
     const config = BELT_CONFIGS[rank];
     if (!config) return null;
 
+    // A partir del rango 10 son cinturones negros, que muestran el numero de Dan en romanos (ej. "I Dan" -> "I")
     const isBlackBelt = rank >= 10;
     const romanRank = isBlackBelt ? config.name.split(' ')[0] : '';
 
@@ -92,9 +94,9 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     tipHorizontal: {
-        width: '15%', // Relative width for scalability
+        width: '15%', // Ancho relativo para que escale bien con cualquier tamano del cinturon
         height: '100%',
-        marginRight: '10%', // Relative margin
+        marginRight: '10%', // Margen relativo, igual que el ancho
         borderLeftWidth: 1,
         borderRightWidth: 1,
         borderColor: 'rgba(0,0,0,0.1)',
@@ -108,11 +110,11 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(0,0,0,0.1)',
     },
     romanText: {
-        color: '#FFE135', // Yellow
+        color: '#FFE135', // Amarillo
         fontWeight: 'bold',
         fontSize: 16,
         position: 'absolute',
-        right: 15, // Position on the right end
+        right: 15, // Lo colocamos pegado al extremo derecho del cinturon
         zIndex: 2,
     },
     text: {

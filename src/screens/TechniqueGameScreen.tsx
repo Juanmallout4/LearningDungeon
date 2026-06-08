@@ -7,7 +7,7 @@ import { ClubService } from '../services/ClubService';
 import { VocabularyTerm } from '../types';
 import { useTranslation } from 'react-i18next';
 
-// Utility for shuffling
+// Aqui mezclamos un array al azar (algoritmo Fisher-Yates) sin mutar el original
 const shuffleArray = (array: any[]) => {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -17,6 +17,7 @@ const shuffleArray = (array: any[]) => {
     return arr;
 };
 
+// Aqui configuramos cuántos puntos suma cada respuesta correcta de este minijuego
 const POINTS_PER_CORRECT = 2;
 
 export const TechniqueGameScreen = ({ route }: any) => {
@@ -28,20 +29,26 @@ export const TechniqueGameScreen = ({ route }: any) => {
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Banco de terminos jugables (con imagen asociada) descargado del club
     const [pool, setPool] = useState<VocabularyTerm[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Pregunta actual (termino correcto + opciones mezcladas) y estado de la respuesta del usuario
     const [currentTerm, setCurrentTerm] = useState<VocabularyTerm | null>(null);
     const [options, setOptions] = useState<string[]>([]);
     const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
     const [multiplierInfo, setMultiplierInfo] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
+    // Filtro de tema actualmente activo (null = sin filtrar, se usa todo el banco)
     const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
 
+    // Cargamos el banco de términos con imagen al montar la pantalla
     useEffect(() => {
         loadPool();
     }, []);
 
+    // Trae del servicio el conjunto de términos jugables: usa el club del usuario o el club
+    // global como fallback, y limita por cinturón solo cuando la actividad es Taekwondo
     const loadPool = async () => {
         const GLOBAL_CLUB_ID = '00000000-0000-4000-a000-000000000000';
         const targetOrgId = user?.organizationId || GLOBAL_CLUB_ID;
@@ -60,15 +67,20 @@ export const TechniqueGameScreen = ({ route }: any) => {
         }
     };
 
+    // Lista de temas únicos presentes en el banco de términos, para construir los chips de filtro
     const topics = useMemo(
         () => Array.from(new Set(pool.map(v => v.topic).filter((t): t is string => !!t))),
         [pool]
     );
+    // Subconjunto de términos realmente jugable: si hay un tema seleccionado filtramos por él,
+    // si no, usamos el banco completo
     const activePool = useMemo(
         () => selectedTopic ? pool.filter(v => v.topic === selectedTopic) : pool,
         [pool, selectedTopic]
     );
 
+    // Cambia el tema activo y genera una nueva pregunta sobre el subconjunto filtrado
+    // (si no hay suficientes términos en ese tema, limpia la pregunta actual)
     const handleSelectTopic = (topic: string | null) => {
         setSelectedTopic(topic);
         const filtered = topic ? pool.filter(v => v.topic === topic) : pool;
@@ -79,7 +91,8 @@ export const TechniqueGameScreen = ({ route }: any) => {
         }
     };
 
-    // Builds a fresh shuffled set of options (1 correct + 3 distractors) for a given entry
+    // Construye un conjunto de opciones mezclado (1 respuesta correcta + 3 distractores) para un término dado:
+    // toma el resto de items del banco, los baraja, escoge 3 como distractores y mezcla todo el conjunto final
     const buildOptions = (term: VocabularyTerm, items: VocabularyTerm[]) => {
         const otherItems = items.filter(v => v.id !== term.id);
         const shuffledOthers = shuffleArray(otherItems);
@@ -87,6 +100,8 @@ export const TechniqueGameScreen = ({ route }: any) => {
         return shuffleArray([term.term, ...distractors]);
     };
 
+    // Elige al azar un término del conjunto activo como pregunta y genera sus opciones,
+    // limpiando cualquier estado de respuesta/feedback de la pregunta anterior
     const generateQuestion = (items: VocabularyTerm[]) => {
         if (items.length < 4) return;
 
@@ -101,7 +116,8 @@ export const TechniqueGameScreen = ({ route }: any) => {
         setOptions(buildOptions(correctItem, items));
     };
 
-    // Re-asks the SAME entry with re-shuffled options, so a wrong answer can be retried until correct
+    // Repite la MISMA pregunta con las opciones rebarajadas, para que una respuesta fallida
+    // pueda reintentarse hasta acertar (sin saltar a un término nuevo)
     const retryQuestion = () => {
         if (!currentTerm) return;
         setSelectedAnswer(null);
@@ -109,8 +125,10 @@ export const TechniqueGameScreen = ({ route }: any) => {
         setOptions(buildOptions(currentTerm, activePool));
     };
 
+    // Procesa la respuesta elegida: marca el feedback (correcto/incorrecto), y si acierta,
+    // suma puntos al usuario en el servicio y pasa automáticamente a la siguiente pregunta
     const handleSelectOption = (technique: string) => {
-        if (selectedAnswer !== null) return; // Prevent double clicks
+        if (selectedAnswer !== null) return; // Evita pulsaciones dobles mientras se procesa la respuesta
         setSelectedAnswer(technique);
 
         const isCorrect = !!currentTerm && technique === currentTerm.term;
@@ -130,6 +148,7 @@ export const TechniqueGameScreen = ({ route }: any) => {
         }
     };
 
+    // Mientras se descarga el banco de terminos, mostramos solo un indicador de carga
     if (isLoading) {
         return (
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -138,6 +157,7 @@ export const TechniqueGameScreen = ({ route }: any) => {
         );
     }
 
+    // No hay terminos suficientes en todo el banco para jugar (se necesitan al menos 4): pantalla vacia con boton de volver
     if (pool.length < 4) {
         return (
             <View style={styles.container}>
@@ -159,12 +179,14 @@ export const TechniqueGameScreen = ({ route }: any) => {
         );
     }
 
+    // Color de fondo que "destella" según el último resultado (verde si acierta, rojo si falla)
     const flashColor = feedback === 'correct'
         ? `${theme.colors.success}33`
         : feedback === 'incorrect'
             ? `${theme.colors.error}33`
             : theme.colors.background;
 
+    // Selector de temas en forma de chips: solo se construye si el banco tiene temas definidos
     const topicPicker = topics.length > 0 && (
         <View style={styles.topicRow}>
             <TouchableOpacity
@@ -189,6 +211,7 @@ export const TechniqueGameScreen = ({ route }: any) => {
         </View>
     );
 
+    // Hay banco general suficiente, pero el tema filtrado no llega al minimo: mostramos el selector de temas + aviso
     if (activePool.length < 4) {
         return (
             <View style={styles.container}>
@@ -224,6 +247,7 @@ export const TechniqueGameScreen = ({ route }: any) => {
                 {currentTerm && (
                     <View style={styles.questionCard}>
                         <Text style={styles.questionPrompt}>{t('technique.guessPrompt')}</Text>
+                        {/* La imagen solo se muestra si el termino tiene una asociada (algunos terminos pueden no tenerla) */}
                         {!!currentTerm.imageUrl && (
                             <Image source={{ uri: currentTerm.imageUrl }} style={styles.techniqueImage} resizeMode="contain" />
                         )}
@@ -234,6 +258,8 @@ export const TechniqueGameScreen = ({ route }: any) => {
                                 let borderColor = theme.colors.border;
                                 let textColor = theme.colors.text;
 
+                                // Tras responder, resaltamos en verde la opción correcta y en rojo
+                                // la opción marcada por el usuario si fue la incorrecta
                                 if (selectedAnswer) {
                                     if (option === currentTerm.term) {
                                         bgColor = `${theme.colors.success}20`;

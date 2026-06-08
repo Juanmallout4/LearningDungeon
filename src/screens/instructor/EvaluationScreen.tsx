@@ -18,15 +18,16 @@ export const EvaluationScreen = ({ route }: any) => {
     const styles = createStyles(theme);
 
     const [selectedTulId, setSelectedTulId] = useState<string | null>(null);
-    // Evaluation State: { moveIndex: score }
+    // Notas por movimiento del tul que se esta evaluando: indice de movimiento -> puntuacion (1-3)
     const [scores, setScores] = useState<{ [key: number]: number }>({});
     const [comments, setComments] = useState<{ [key: number]: string }>({});
-    // Category-rubric evaluation state (Inglés/Ballet): { categoryKey: score }
+    // Para actividades con rubrica por categorias (Ingles/Ballet): clave de categoria -> puntuacion
     const [categoryScores, setCategoryScores] = useState<{ [key: string]: number }>({});
     const [categoryComments, setCategoryComments] = useState<{ [key: string]: string }>({});
     const [isSaving, setIsSaving] = useState(false);
     const [instructorId, setInstructorId] = useState<string | null>(null);
 
+    // Si la actividad tiene una rubrica por categorias definida (no es taekwondo), la usamos para pintar el formulario alternativo
     const rubric = activityType ? EVALUATION_RUBRICS[activityType] : undefined;
 
     React.useEffect(() => {
@@ -34,13 +35,14 @@ export const EvaluationScreen = ({ route }: any) => {
             navigation.replace('ActivityList');
             return;
         }
-        // Defense in depth: every activityType must map to either the TUL flow or a known rubric (server also enforces this)
+        // Comprobacion extra en cliente (el servidor tambien la aplica): todo activityType debe tener flujo de tuls o una rubrica conocida
         if (activityType && activityType !== 'taekwondo_itf' && !EVALUATION_RUBRICS[activityType]) {
             Alert.alert(t('common.error', { defaultValue: 'Error' }), t('instructor.evaluationNotAvailable', { defaultValue: 'Las evaluaciones no están disponibles para esta actividad.' }));
             navigation.goBack();
         }
     }, [student, activityType, navigation]);
 
+    // Al montar, recuperamos el id del instructor logueado desde AsyncStorage para incluirlo al guardar la evaluacion
     React.useEffect(() => {
         const fetchInstructor = async () => {
             try {
@@ -55,12 +57,14 @@ export const EvaluationScreen = ({ route }: any) => {
         fetchInstructor();
     }, []);
 
+    // Selecciona el tul a evaluar y reinicia las notas/comentarios anteriores para empezar de cero
     const handleTulSelect = (tulId: string) => {
         setSelectedTulId(tulId);
-        setScores({}); // Reset scores
-        setComments({}); // Reset comments
+        setScores({}); // Reiniciamos las notas
+        setComments({}); // Reiniciamos los comentarios
     };
 
+    // Guarda la nota elegida para un movimiento concreto del tul
     const handleScore = (moveIndex: number, score: number) => {
         setScores(prev => ({
             ...prev,
@@ -68,6 +72,7 @@ export const EvaluationScreen = ({ route }: any) => {
         }));
     };
 
+    // Guarda el comentario opcional que el instructor escribe para un movimiento concreto
     const handleComment = (moveIndex: number, text: string) => {
         setComments(prev => ({
             ...prev,
@@ -75,6 +80,7 @@ export const EvaluationScreen = ({ route }: any) => {
         }));
     };
 
+    // Envia la evaluacion del tul al backend: calcula la nota media, arma la lista de movimientos calificados y los persiste
     const submitEvaluation = async () => {
         if (!selectedTulId || isSaving) return;
         
@@ -83,13 +89,14 @@ export const EvaluationScreen = ({ route }: any) => {
 
         setIsSaving(true);
 
+        // Si todavia no tenemos el id del instructor en memoria, lo recuperamos de AsyncStorage y lo cacheamos
         let currentInstructorId = instructorId;
         if (!currentInstructorId) {
             try {
                 const userData = await AsyncStorage.getItem('@Learning Dungeon_user');
                 if (userData) {
                     currentInstructorId = JSON.parse(userData).id;
-                    setInstructorId(currentInstructorId); // cache it
+                    setInstructorId(currentInstructorId); // lo cacheamos para no repetir la lectura
                 }
             } catch (e) {
                 console.error("Error retrieving user from storage", e);
@@ -102,22 +109,24 @@ export const EvaluationScreen = ({ route }: any) => {
             return;
         }
         try {
+            // Calculamos la nota media de todos los movimientos calificados para usarla como resumen de la evaluacion
             const sumScore = Object.values(scores).reduce((a, b) => a + b, 0);
             const totalMoves = Object.values(scores).length;
             const avg = totalMoves > 0 ? (sumScore / totalMoves).toFixed(1) : 0;
             const summary = `Nota media: ${avg}`;
 
+            // Construimos la lista de movimientos calificados (incluye el Jumbi en el indice -1) con su nota y comentario
             const movements = [];
             for (let i = -1; i < selectedTulObj.moves; i++) {
                 if (scores[i] !== undefined) {
                     movements.push({
-                        moveIndex: i, 
+                        moveIndex: i,
                         score: scores[i],
                         comment: comments[i] || ''
                     });
                 }
             }
-            
+
             if (movements.length === 0) {
                  Alert.alert(t('common.error', { defaultValue: 'Error' }), t('instructor.minGrade', { defaultValue: 'Debes calificar al menos un movimiento.' }));
                  setIsSaving(false);
@@ -143,18 +152,22 @@ export const EvaluationScreen = ({ route }: any) => {
         }
     };
 
+    // Guarda la nota elegida para una categoria de la rubrica (Ingles/Ballet)
     const handleCategoryScore = (categoryKey: string, score: number) => {
         setCategoryScores(prev => ({ ...prev, [categoryKey]: score }));
     };
 
+    // Guarda el comentario opcional para una categoria de la rubrica
     const handleCategoryComment = (categoryKey: string, text: string) => {
         setCategoryComments(prev => ({ ...prev, [categoryKey]: text }));
     };
 
+    // Envia la evaluacion por categorias (actividades con rubrica, no taekwondo): calcula la media y persiste las notas
     const submitCategoryEvaluation = async () => {
         if (!rubric || isSaving) return;
         setIsSaving(true);
 
+        // Igual que en submitEvaluation: si falta el id del instructor en memoria, lo recuperamos de AsyncStorage
         let currentInstructorId = instructorId;
         if (!currentInstructorId) {
             try {
@@ -174,6 +187,7 @@ export const EvaluationScreen = ({ route }: any) => {
             return;
         }
         try {
+            // Filtramos las categorias que realmente se calificaron y armamos el payload con nota y comentario de cada una
             const scoresPayload = rubric
                 .filter(category => categoryScores[category.key] !== undefined)
                 .map(category => ({
@@ -188,6 +202,7 @@ export const EvaluationScreen = ({ route }: any) => {
                 return;
             }
 
+            // Nota media de todas las categorias calificadas, usada como resumen de la evaluacion
             const sumScore = scoresPayload.reduce((a, b) => a + b.score, 0);
             const avg = (sumScore / scoresPayload.length).toFixed(1);
             const summary = `Nota media: ${avg}`;
@@ -211,7 +226,7 @@ export const EvaluationScreen = ({ route }: any) => {
 
     const selectedTul = TULS_DATA.find(t => t.id === selectedTulId);
 
-    // Filter Tuls based on student rank (up to their belt)
+    // Solo mostramos tuls cuyo requisito de rango sea igual o inferior al cinturon actual del alumno
     const availableTuls = TULS_DATA.filter(t => t.rankRequirement <= student.rank);
 
     return (
@@ -256,7 +271,7 @@ export const EvaluationScreen = ({ route }: any) => {
                         <ScrollView contentContainerStyle={styles.evalContent}>
                             <Text style={styles.instruction}>{t('instructor.gradeMoves')}</Text>
 
-                            {/* Generating movements based on count */}
+                            {/* Generamos una fila por cada movimiento del tul; el indice -1 corresponde al Jumbi (postura inicial) */}
                             {Array.from({ length: selectedTul.moves + 1 }).map((_, mappedIndex) => {
                                 const index = mappedIndex - 1;
                                 return (
@@ -474,7 +489,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     },
     scoreButtonSelected: {
         backgroundColor: theme.colors.primary,
-        borderColor: theme.colors.primary, // should check if mainColor is visible
+        borderColor: theme.colors.primary,
     },
     scoreText: {
         color: theme.colors.textSecondary,

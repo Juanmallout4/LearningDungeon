@@ -1,3 +1,5 @@
+// Aqui guardamos todas las cadenas de texto de la app traducidas al aleman (de), organizadas por
+// secciones (common, auth, navigation, etc.) que coinciden con las claves usadas en useTranslation()/t()
 export default {
     common: {
         error: "Fehler",

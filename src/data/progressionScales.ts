@@ -1,3 +1,5 @@
+// Un nivel de progresión: posición ordinal (order, define el orden de la escala),
+// nombre mostrado y colores de fondo/texto usados en las insignias (ProgressionBadge)
 export interface ProgressionLevel {
     order: number;
     name: string;
@@ -5,10 +7,10 @@ export interface ProgressionLevel {
     textColor?: string;
 }
 
-// Fixed, app-defined catalogs per activity_type (not customizable per club —
-// these are standardized systems). Taekwondo ITF is intentionally absent here:
-// it keeps using BELT_CONFIGS + BeltDisplay (src/data/belts.ts).
-// Names/colors are placeholders and can be freely edited in this single file.
+// Catálogos de progresión fijos por activity_type (no personalizables por club — son sistemas estandarizados).
+// Taekwondo ITF queda fuera a propósito: sigue usando BELT_CONFIGS + BeltDisplay (src/data/belts.ts).
+// Los nombres y colores son provisionales y se pueden editar libremente aquí mismo.
+// Aqui podemos configurar los niveles, su orden y sus colores para cada tipo de actividad
 export const PROGRESSION_SCALES: Record<string, ProgressionLevel[]> = {
     ingles: [
         { order: 0, name: 'Starters', color: '#A0C4FF' },

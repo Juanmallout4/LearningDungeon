@@ -8,12 +8,13 @@ import { TrackingService } from '../../services/TrackingService';
 
 export const AttendanceHistoryScreen = ({ route }: any) => {
     const navigation = useNavigation<any>();
-    // Make these optional since the screen might be accessed without a specific group context
+    // Aqui sacamos los datos del grupo/actividad de los parametros de navegacion, con valores por defecto por si llegan vacios
     const groupName = route.params?.group?.name || 'All Groups';
     const activityName = route.params?.activityName || '';
     const activityId = route.params?.activityId;
     const activityType = route.params?.activityType;
 
+    // Si entramos a esta pantalla sin un grupo valido, redirigimos de vuelta al listado de actividades
     React.useEffect(() => {
         if (!route.params?.group || typeof route.params.group !== 'object') {
             navigation.replace('ActivityList');
@@ -27,8 +28,10 @@ export const AttendanceHistoryScreen = ({ route }: any) => {
     const [history, setHistory] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Cortamos el render aqui mismo si no hay grupo (el useEffect de arriba ya nos esta redirigiendo)
     if (!route.params?.group || typeof route.params.group !== 'object') return null;
 
+    // Cada vez que la pantalla recibe el foco, pedimos al backend el historial de asistencia de este grupo
     useFocusEffect(
         React.useCallback(() => {
             const groupId = route.params?.group?.id;
@@ -43,6 +46,7 @@ export const AttendanceHistoryScreen = ({ route }: any) => {
         }, [route.params?.group?.id])
     );
 
+    // Pinta cada fila del historial; al pulsarla navega al detalle de asistencia de ese dia concreto
     const renderHistoryItem = ({ item }: { item: any }) => (
         <TouchableOpacity 
             style={[styles.card, item.is_auto && styles.autoCard]}
@@ -59,6 +63,7 @@ export const AttendanceHistoryScreen = ({ route }: any) => {
             <View style={styles.dateContainer}>
                 <Ionicons name="calendar-outline" size={24} color={item.is_auto ? theme.colors.warning : theme.colors.primary} />
                 <Text style={styles.dateText}>{item.date}</Text>
+                {/* Marcamos con una insignia los registros que el sistema genero solo, sin pasar lista manual */}
                 {item.is_auto && (
                     <View style={styles.autoBadge}>
                         <Text style={styles.autoText}>{t('attendance.auto', { defaultValue: 'Automático' })}</Text>
@@ -93,6 +98,7 @@ export const AttendanceHistoryScreen = ({ route }: any) => {
                 </View>
             </View>
 
+            {/* Mientras llega la respuesta del servidor mostramos un spinner; luego pintamos la lista o el aviso de vacio */}
             {isLoading ? (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <ActivityIndicator size="large" color={theme.colors.primary} />

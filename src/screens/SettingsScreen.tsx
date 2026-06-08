@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { MenuContent } from '../components/MenuContent';
 
 export const SettingsScreen = ({ route }: any) => {
+    // El perfil del usuario llega por los parametros de navegacion desde la pantalla anterior
     const user = route.params?.user as UserProfile;
     const navigation = useNavigation<any>();
     const { theme } = useTheme();
@@ -25,6 +26,7 @@ export const SettingsScreen = ({ route }: any) => {
                 <View style={{ width: 40 }} />
             </View>
 
+            {/* Reutilizamos el contenido del menu lateral como cuerpo de la pantalla de ajustes */}
             <MenuContent user={user} />
         </View>
     );
@@ -121,11 +123,11 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         fontSize: 18,
     },
     premiumCard: {
-        backgroundColor: theme.isDark ? '#2C2C2C' : theme.colors.background, // Darker card or background
+        backgroundColor: theme.isDark ? '#2C2C2C' : theme.colors.background, // Tarjeta mas oscura en modo oscuro, fondo normal en modo claro
         padding: theme.spacing.m,
         borderRadius: theme.borderRadius.m,
         borderWidth: 1,
-        borderColor: theme.colors.primary, // Gold border
+        borderColor: theme.colors.primary, // Borde dorado para resaltar la tarjeta premium
     },
     premiumTitle: {
         color: theme.colors.primary,

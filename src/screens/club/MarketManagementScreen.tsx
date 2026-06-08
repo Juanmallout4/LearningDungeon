@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ClubService } from '../../services/ClubService';
 import { MarketItem } from '../../types';
 
+// Aqui definimos las etiquetas de actividad que se pueden asignar a un item del mercado (compartido o por disciplina)
 const MARKET_ACTIVITY_TYPE_OPTIONS: { value: string; labelKey: string; defaultLabel: string }[] = [
     { value: 'shared', labelKey: 'market.activityTagShared', defaultLabel: 'Compartido' },
     { value: 'taekwondo_itf', labelKey: 'settings.activityTypeTaekwondo', defaultLabel: 'Taekwondo ITF' },
@@ -22,6 +23,7 @@ export const MarketManagementScreen = ({ route }: any) => {
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Devuelve el color asociado a cada rareza para pintar las insignias de los items RPG
     const getRarityColor = (rarity: string) => {
         switch (rarity) {
             case 'rare': return '#3182CE';
@@ -36,16 +38,17 @@ export const MarketManagementScreen = ({ route }: any) => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     
+    // Aqui controlamos la pestaña activa (tienda base / mercader ambulante / catálogo general) y el spinner de restauración
     const [activeTab, setActiveTab] = useState<'base' | 'merchant' | 'catalog'>('base');
     const [isRestoring, setIsRestoring] = useState(false);
-    
-    // Filter states
+
+    // Aqui guardamos los filtros de la lista: texto de búsqueda, tipo de item, rareza y slot de equipo (estos dos últimos solo para RPG)
     const [searchQuery, setSearchQuery] = useState('');
     const [typeFilter, setTypeFilter] = useState<'all' | 'physical' | 'virtual' | 'rpg'>('all');
     const [rarityFilter, setRarityFilter] = useState('all');
     const [slotFilter, setSlotFilter] = useState('all');
 
-    // Form state
+    // Aqui se guardan los campos del formulario de creación/edición de un item del mercado
     const [newName, setNewName] = useState('');
     const [newDescription, setNewDescription] = useState('');
     const [newCost, setNewCost] = useState('100');
@@ -54,20 +57,20 @@ export const MarketManagementScreen = ({ route }: any) => {
     const [itemType, setItemType] = useState('equippable'); // equippable, material, consumable
     const [rarity, setRarity] = useState('common');
     const [itemActivityType, setItemActivityType] = useState('shared');
-    
-    // Visibility flags
+
+    // Aqui configuramos en qué "escaparates" aparece el item: tienda base del club, y como vendible/comprable/exclusivo del mercader
     const [isInBaseStore, setIsInBaseStore] = useState(true);
     const [isMerchantSellable, setIsMerchantSellable] = useState(false);
     const [isMerchantBuyable, setIsMerchantBuyable] = useState(false);
     const [isMerchantExclusive, setIsMerchantExclusive] = useState(false);
 
-    // Price Ranges
+    // Aqui definimos los rangos de precio (mín-máx) que el mercader usará al comprar o vender este item al alumno
     const [sellPriceMin, setSellPriceMin] = useState('10');
     const [sellPriceMax, setSellPriceMax] = useState('50');
     const [buyPriceMin, setBuyPriceMin] = useState('100');
     const [buyPriceMax, setBuyPriceMax] = useState('500');
-    
-    // Combat item state
+
+    // Aqui configuramos las estadísticas de combate del item cuando se marca como equipable en el RPG
     const [isCombatItem, setIsCombatItem] = useState(false);
     const [combatSlot, setCombatSlot] = useState('weapon_1h_right');
     const [hpBoost, setHpBoost] = useState('0');
@@ -76,14 +79,16 @@ export const MarketManagementScreen = ({ route }: any) => {
     const [specialAbilityName, setSpecialAbilityName] = useState('');
     const [specialAbilityDesc, setSpecialAbilityDesc] = useState('');
     const [specialEffects, setSpecialEffects] = useState<any[]>([]);
-    
-    // For Chest selection in effects
+
+    // Aqui guardamos la lista de cofres del club, necesaria para que un efecto de tipo "chest" pueda elegir cuál otorgar
     const [chests, setChests] = useState<any[]>([]);
 
+    // Carga inicial de los items del mercado y los cofres del club al montar la pantalla
     useEffect(() => {
         loadData();
     }, []);
 
+    // Trae del backend los items de mercado y los cofres disponibles para el club activo (por ruta o por el club del usuario)
     const loadData = async () => {
         setIsLoading(true);
         const targetClubId = route.params?.clubId || user?.organizationId;
@@ -103,6 +108,7 @@ export const MarketManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Resetea el formulario a sus valores por defecto y abre el modal en modo "creación"
     const handleCreateItem = () => {
         setEditingId(null);
         setNewName('');
@@ -131,6 +137,7 @@ export const MarketManagementScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
+    // Vuelca los datos de un item existente en el formulario (incluidas estadísticas de combate y efectos especiales) y abre el modal en modo "edición"
     const handleEditItem = (item: any) => {
         setEditingId(item.id);
         setNewName(item.name);
@@ -162,23 +169,27 @@ export const MarketManagementScreen = ({ route }: any) => {
         setIsModalVisible(true);
     };
 
+    // Añade un nuevo efecto especial al consumible con un tipo y valor por defecto (luego se puede cambiar el tipo pulsándolo)
     const addEffect = () => {
         setSpecialEffects([...specialEffects, { type: 'heal_hp', value: 0 }]);
     };
 
+    // Combina los nuevos campos (content) con el efecto existente en la posición "index", manteniendo el resto intacto
     const updateEffect = (index: number, content: any) => {
         const newEffects = [...specialEffects];
         newEffects[index] = { ...newEffects[index], ...content };
         setSpecialEffects(newEffects);
     };
 
+    // Elimina el efecto en la posición "index" filtrándolo fuera del array
     const removeEffect = (index: number) => {
         setSpecialEffects(specialEffects.filter((_, i) => i !== index));
     };
 
+    // Valida y guarda el item (creación o edición), construyendo el payload con estadísticas de combate y efectos especiales
     const saveItem = async () => {
         if (!newName.trim() || !newCost.trim()) {
-            Alert.alert(t('common.error'), t('market.errorBuy')); // Reusing errorBuy or add more specific
+            Alert.alert(t('common.error'), t('market.errorBuy')); // Reutilizamos errorBuy; podría sustituirse por un mensaje más específico
             return;
         }
 
@@ -189,6 +200,7 @@ export const MarketManagementScreen = ({ route }: any) => {
         }
 
         try {
+            // Solo construimos el bloque de estadísticas de combate si el item está marcado como equipable de combate
             const combatStats = isCombatItem ? {
                 slot: combatSlot,
                 hpBoost: parseInt(hpBoost) || 0,
@@ -198,6 +210,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                 specialAbilityDesc: specialAbilityDesc.trim() || undefined
             } : null;
 
+            // Payload final que se envía al backend, normalizando textos, números y flags de visibilidad/precio
             const itemData = {
                 name: newName.trim(),
                 description: newDescription.trim(),
@@ -221,10 +234,12 @@ export const MarketManagementScreen = ({ route }: any) => {
             };
 
             if (editingId) {
+                // Edición: actualizamos en backend y recargamos toda la lista para reflejar los cambios
                 await ClubService.updateMarketItem(targetClubId, editingId, itemData);
                 loadData();
                 setIsModalVisible(false);
             } else {
+                // Creación: insertamos el item devuelto por el backend al principio de la lista local sin recargar todo
                 const savedItem = await ClubService.addMarketItem(targetClubId, itemData);
                 setItems([savedItem, ...items]);
                 setIsModalVisible(false);
@@ -240,10 +255,11 @@ export const MarketManagementScreen = ({ route }: any) => {
         }
     };
 
+    // Borra un item del mercado, pidiendo confirmación nativa del navegador en web antes de llamar al backend
     const deleteItem = async (itemId: string) => {
         const targetClubId = route.params?.clubId || user?.organizationId;
         if (!targetClubId) return;
-        
+
         const confirmMessage = t('market.deleteConfirmBody');
         if (typeof window !== 'undefined' && window.confirm) {
             if (!window.confirm(confirmMessage)) return;
@@ -256,6 +272,8 @@ export const MarketManagementScreen = ({ route }: any) => {
             Alert.alert(t('common.error'), error.message || t('common.error'));
         }
     };
+
+    // Restaura los items "de sistema" del club (p.ej. Piedra de Reinicio) a sus valores por defecto, previa confirmación
     const handleRestoreSystemItems = async () => {
         const targetClubId = route.params?.clubId || user?.organizationId;
         if (!targetClubId) return;
@@ -355,6 +373,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                     </TouchableOpacity>
                 </ScrollView>
 
+                {/* Estos sub-filtros de rareza y slot solo tienen sentido cuando se está filtrando por items RPG */}
                 {typeFilter === 'rpg' && (
                     <View>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterRow, { paddingTop: 0 }]}>
@@ -416,22 +435,23 @@ export const MarketManagementScreen = ({ route }: any) => {
                 <FlatList
                     key={Platform.OS === 'web' ? 'grid-3' : 'list-1'}
                     data={items.filter(i => {
-                        // Tab filter
+                        // Filtro de pestaña: "base" muestra items de la tienda del club, "merchant" los del mercader (venta/compra/exclusivos)
+                        // y "catalog" el resto (items que no aparecen en ningún escaparate activo)
                         if (activeTab === 'base' && !i.is_in_base_store) return false;
                         if (activeTab === 'merchant' && (!i.is_merchant_sellable && !i.is_merchant_buyable && !i.is_merchant_exclusive)) return false;
                         if (activeTab === 'catalog' && (i.is_in_base_store || i.is_merchant_sellable || i.is_merchant_buyable || i.is_merchant_exclusive)) return false;
 
-                        // Search filter
+                        // Filtro de texto: comparación insensible a mayúsculas sobre el nombre del item
                         if (searchQuery && !i.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
 
-                        // Type filter
+                        // Filtro de tipo: separamos físico, virtual "puro" (sin estadísticas de combate) y RPG (con estadísticas de combate)
                         if (typeFilter !== 'all') {
                             if (typeFilter === 'physical' && i.type !== 'physical') return false;
                             if (typeFilter === 'virtual' && (i.type !== 'virtual' || !!i.combatStats)) return false;
                             if (typeFilter === 'rpg' && !i.combatStats) return false;
                         }
 
-                        // RPG sub-filters
+                        // Sub-filtros adicionales solo aplicables cuando el filtro principal es RPG: rareza y slot de equipo
                         if (typeFilter === 'rpg') {
                             if (rarityFilter !== 'all' && i.rarity !== rarityFilter) return false;
                             if (slotFilter !== 'all') {
@@ -468,6 +488,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                             <View style={styles.cardBody}>
                                 <Text style={styles.term} numberOfLines={1}>{item.name}</Text>
                                 
+                                {/* La insignia de precio cambia según la pestaña: precio de tienda, rango de compra del mercader o rango de venta al mercader */}
                                 <View style={styles.badgesRow}>
                                     {activeTab === 'base' ? (
                                         <View style={styles.priceBadge}>
@@ -651,6 +672,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                              <Text style={styles.checkboxLabel}>{t('market.merchantSellable')}</Text>
                          </View>
 
+                         {/* Si el item se puede vender al mercader, configuramos el rango de precio que el mercader pagará por él (usa los estados buyPrice*) */}
                          {isMerchantSellable && (
                              <View style={styles.merchantPriceBox}>
                                  <Text style={styles.miniLabel}>{t('market.sellRange')}</Text>
@@ -671,6 +693,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                              <Text style={styles.checkboxLabel}>{t('market.merchantBuyable')}</Text>
                          </View>
 
+                         {/* Si el item se puede comprar al mercader, configuramos el rango de precio que el alumno pagará por él (usa los estados sellPrice*) */}
                          {isMerchantBuyable && (
                              <View style={styles.merchantPriceBox}>
                                  <Text style={styles.miniLabel}>{t('market.buyRange')}</Text>
@@ -698,6 +721,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                              <Text style={styles.label}>{t('market.isCombatItem')}</Text>
                          </View>
 
+                        {/* Configuración exclusiva de items de combate: slot de equipo, bonificadores numéricos y habilidad especial pasiva */}
                         {isCombatItem && (
                             <View style={styles.combatSection}>
                                 <Text style={styles.label}>{t('market.slot')}</Text>
@@ -737,7 +761,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                                     </View>
                                 </View>
 
-                                {/* Pasiva Arcade */}
+                                {/* Habilidad pasiva especial que se activa en el modo arcade al equipar este item */}
                                 <Text style={[styles.label, {marginTop: 15, color: '#F6E05E'}]}>{t('market.specialAbility')}</Text>
                                 <TextInput 
                                     style={[styles.input, {borderColor: '#F6E05E', borderWidth: 1}]} 
@@ -755,15 +779,17 @@ export const MarketManagementScreen = ({ route }: any) => {
                                 />
                             </View>
                         )}
+                        {/* Editor de efectos especiales: solo se muestra para items de tipo "consumable" y permite definir qué hace cada efecto al usarlo */}
                         {itemType === 'consumable' && (
                             <View style={styles.effectsSection}>
                                 <Text style={[styles.label, { color: theme.colors.primary }]}>Efectos del Consumible</Text>
                                 {specialEffects.map((eff, index) => (
                                     <View key={index} style={styles.effectCard}>
                                         <View style={styles.effectRow}>
-                                            <TouchableOpacity 
+                                            <TouchableOpacity
                                                 style={styles.effectTypeBtn}
                                                 onPress={() => {
+                                                    // Al pulsar el botón, rotamos al siguiente tipo de efecto disponible en la lista (ciclo circular)
                                                     const types = ['heal_hp', 'heal_mana', 'full_restore', 'add_stat', 'add_xp', 'add_points', 'buff', 'clan_points', 'chest'];
                                                     const currentIdx = types.indexOf(eff.type);
                                                     const nextType = types[(currentIdx + 1) % types.length];
@@ -777,7 +803,8 @@ export const MarketManagementScreen = ({ route }: any) => {
                                             </TouchableOpacity>
                                         </View>
 
-                                        {/* Dynamic Inputs based on type */}
+                                        {/* Inputs dinámicos según el tipo de efecto seleccionado */}
+                                        {/* Efectos numéricos simples: solo necesitan un valor entero (curación, maná, experiencia, puntos...) */}
                                         {(['heal_hp', 'heal_mana', 'add_xp', 'add_points', 'clan_points'].includes(eff.type)) && (
                                             <TextInput 
                                                 style={styles.miniInput}
@@ -788,6 +815,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                                             />
                                         )}
 
+                                        {/* Efecto que aumenta una estadística concreta (texto libre, p.ej. strength/focus) en una cantidad numérica */}
                                         {eff.type === 'add_stat' && (
                                             <View style={styles.effectRow}>
                                                 <TextInput 
@@ -806,6 +834,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                                             </View>
                                         )}
 
+                                        {/* Efecto temporal tipo "buff": multiplicador de bonificación y duración en minutos */}
                                         {eff.type === 'buff' && (
                                             <View style={styles.effectRow}>
                                                 <TextInput 
@@ -825,6 +854,7 @@ export const MarketManagementScreen = ({ route }: any) => {
                                             </View>
                                         )}
 
+                                        {/* Efecto que otorga un cofre concreto: listamos los cofres del club para elegir cuál se entregará */}
                                         {eff.type === 'chest' && (
                                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 5 }}>
                                                 {chests.map(c => (
@@ -1008,7 +1038,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
         overflow: 'hidden',
-        // Shadow for premium feel
+        // Sombra sutil para dar sensación premium a la tarjeta
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,

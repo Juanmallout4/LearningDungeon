@@ -21,49 +21,50 @@ export const ClanHubScreen = () => {
     const [clan, setClan] = useState<any>(null);
     const [allClans, setAllClans] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    
-    // Tabs state
+
+    // Aqui controlamos qué pestaña del hub del clan está activa (chat, arena, lobbies, miembros o bóveda)
     const [activeTab, setActiveTab] = useState<'chat' | 'arena' | 'lobbies' | 'members' | 'vault'>('arena');
-    
-    // Chat state
+
+    // Estado del chat: historial de mensajes, texto del input y referencia al ScrollView para autoscroll
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
     const scrollViewRef = useRef<ScrollView>(null);
-    
-    // Boss/Lobby State
+
+    // Estado del jefe de clan (boss) y de los lobbies/sala actual donde está metido el jugador
     const [boss, setBoss] = useState<any>(null);
     const [publicLobbies, setPublicLobbies] = useState<any[]>([]);
     const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(null);
-    
-    // Modals
+
+    // Visibilidad de los modales de creación de lobby y de confirmación de borrado de clan
     const [showLobbyModal, setShowLobbyModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
-    
-    // Members State
+
+    // Lista de miembros del clan (se rellena con fetchClanMembers, ordenada por nivel)
     const [clanMembers, setClanMembers] = useState<any[]>([]);
 
-    // Vault State
+    // Estado de la bóveda del clan: objetos guardados, puntos del banco común y modal de depósito
     const [vaultItems, setVaultItems] = useState<any[]>([]);
     const [bankPoints, setBankPoints] = useState(0);
     const [isDepositModalVisible, setIsDepositModalVisible] = useState(false);
     const [depositAmount, setDepositAmount] = useState('');
 
-    // Distribution State (Granting)
+    // Estado del reparto de recompensas (líder/oficial regala objetos o puntos del banco a un miembro)
     const [isGrantModalVisible, setIsGrantModalVisible] = useState(false);
     const [selectedVaultItem, setSelectedVaultItem] = useState<any | null>(null);
     const [isGrantingPoints, setIsGrantingPoints] = useState(false);
     const [pointsToGrant, setPointsToGrant] = useState('100');
     const [grantTargetMember, setGrantTargetMember] = useState<any | null>(null);
 
-    // Hierarchy State
+    // Estado de gestión de jerarquía: miembro seleccionado para ascender/degradar y visibilidad del menú de acciones
     const [selectedMemberActions, setSelectedMemberActions] = useState<any | null>(null);
     const [isActionModalVisible, setIsActionModalVisible] = useState(false);
 
-    // Kick confirmation
+    // Id del miembro pendiente de expulsión (controla el modal de confirmación de expulsión)
     const [kickTargetId, setKickTargetId] = useState<string | null>(null);
 
     const socketRef = useRef<Socket | null>(null);
 
+    // Al montar la pantalla cargamos todos los datos del clan; al desmontar cerramos el socket para no dejar conexiones abiertas
     useEffect(() => {
         loadData();
         return () => {
@@ -71,6 +72,9 @@ export const ClanHubScreen = () => {
         };
     }, []);
 
+    // Punto de entrada de la pantalla: averigua si el usuario ya pertenece a un clan.
+    // Si tiene clan, carga en paralelo el socket, el jefe activo, los lobbies, los miembros y la bóveda.
+    // Si no tiene clan, en su lugar trae la lista de clanes disponibles para unirse (de su organización o del club global).
     const loadData = async () => {
         setLoading(true);
         try {
@@ -78,7 +82,7 @@ export const ClanHubScreen = () => {
             setUser(currentUser);
             if (!currentUser) return;
 
-            // Get user's clan
+            // Consultamos a qué clan pertenece (si pertenece a alguno) este usuario
             const clanRes = await apiFetch(`/api/users/${currentUser.id}/clan`);
             const clanData = await clanRes.json();
 
@@ -91,7 +95,7 @@ export const ClanHubScreen = () => {
                 fetchClanMembers(clanData.clan.clan_id);
                 fetchVaultData(clanData.clan.clan_id);
             } else {
-                // Fetch all clans to join using Organization ID or Global Club as fallback
+                // Sin clan propio: traemos los clanes de su organización (o el club global como respaldo) para que pueda unirse a uno
                 const targetOrgId = currentUser.organizationId || GLOBAL_CLUB_ID;
                 const allRes = await apiFetch(`/api/clubs/${targetOrgId}/clans`);
                 const allData = await allRes.json();
@@ -101,6 +105,7 @@ export const ClanHubScreen = () => {
         setLoading(false);
     };
 
+    // Trae los lobbies públicos abiertos en el clan (salas a las que cualquier miembro puede unirse sin código)
     const fetchPublicLobbies = async (clanId: string) => {
         try {
             const res = await apiFetch(`/api/clans/${clanId}/lobbies`);
@@ -111,23 +116,26 @@ export const ClanHubScreen = () => {
         } catch (e) { }
     };
 
+    // Trae la lista de miembros del clan y la ordena de mayor a menor nivel para mostrar el ranking interno
     const fetchClanMembers = async (clanId: string) => {
         try {
             const res = await apiFetch(`/api/clans/${clanId}/members`);
             const data = await res.json();
             if (data.success) {
-                // Sort by level descending
+                // Orden descendente por nivel (los miembros sin nivel asignado se tratan como nivel 0)
                 const sorted = data.members.sort((a: any, b: any) => (b.level || 0) - (a.level || 0));
                 setClanMembers(sorted);
             }
         } catch (e) { }
     };
 
+    // Marca a un miembro como objetivo de expulsión, lo que abre el modal de confirmación (no expulsa todavía)
     const handleKickMember = (memberId: string) => {
         if (!user || !clan) return;
         setKickTargetId(memberId);
     };
 
+    // Ejecuta la expulsión confirmada: llama al backend, cierra el modal y refresca la lista de miembros si tiene éxito
     const confirmKick = async () => {
         if (!user || !clan || !kickTargetId) return;
         try {
@@ -147,6 +155,7 @@ export const ClanHubScreen = () => {
         }
     };
 
+    // Permite al líder cambiar el nombre o el logo del clan mediante un prompt nativo, y envía el cambio (PUT) al backend
     const handleUpdateClan = async (type: 'name' | 'logo') => {
         if (!user || !clan) return;
         const typeLabel = type === 'name' ? t('clan.updateName') : t('clan.updateIcon');
@@ -159,55 +168,65 @@ export const ClanHubScreen = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user.id, ...body })
             });
-            if (res.ok) loadData(); // Reload to get new name/logo
+            if (res.ok) loadData(); // Recargamos los datos para reflejar el nuevo nombre/logo del clan
             else Alert.alert(t('common.error'), t('clan.updateError'));
         } catch(e) { Alert.alert(t('common.error'), t('common.serverError')); }
     };
 
+    // Crea (si no existe) la conexión websocket compartida del clan, se une a la sala del clan
+    // y registra los listeners de chat/lobbies/batalla que mantienen sincronizada la UI en tiempo real
     const initializeSocket = async (clanId: string, currentUser: UserProfile) => {
         if (!socketRef.current) {
             const token = await getToken();
             const authOpts = { auth: { token } };
-            // Using implicit relative path which perfectly matches host automatically in React Native Web
+            // En web usamos ruta relativa (coincide con el host automáticamente); en nativo apuntamos al servidor local explícito
             socketRef.current = Platform.OS === 'web' ? io(authOpts) : io('http://localhost:8080', authOpts);
         }
         const socket = socketRef.current;
 
+        // Avisamos al servidor que este usuario entra en la sala de socket del clan (recibirá sus eventos)
         socket.emit('join_clan', clanId);
 
-        // Fetch old messages
+        // Cargamos el historial de chat ya guardado en BBDD antes de empezar a recibir mensajes en vivo
         apiFetch(`/api/clans/${clanId}/chat`).then(r => r.json()).then(d => {
             if (d.success) setMessages(d.messages);
         });
 
+        // Nuevo mensaje de chat del clan: lo añadimos al historial y bajamos el scroll al final tras el render
         socket.on('new_message', (msg) => {
             setMessages(prev => [...prev, msg]);
             setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
         });
 
+        // Cambió la lista de lobbies públicos del clan (se creó/cerró alguno): refrescamos desde la API
         socket.on('lobbies_updated', () => {
             fetchPublicLobbies(clanId);
         });
 
+        // Se acaba de crear un lobby (propio o de otro miembro que nos invita): guardamos su id y nos vamos a la pestaña Arena
         socket.on('lobby_created', (lobby) => {
             setCurrentLobbyId(lobby.id);
             setActiveTab('arena');
         });
 
+        // Actualización del lobby actual: si sigue existiendo guardamos su id, si se disolvió limpiamos el estado
         socket.on('lobby_update', (lobby) => {
             if (lobby) setCurrentLobbyId(lobby.id);
             else setCurrentLobbyId(null);
         });
 
+        // El servidor avisa que la batalla va a comenzar: navegamos a la pantalla de combate contra el jefe del clan
         socket.on('game_starting', () => {
             navigation.navigate('ClanBossBattle', { lobbyId: currentLobbyId, clanId, activityType });
         });
 
+        // Error de lobby (código inválido, sala llena, etc.): lo mostramos al usuario en una alerta
         socket.on('lobby_error', (err) => {
             Alert.alert(t('common.error'), err);
         });
     };
 
+    // Consulta si el clan tiene un jefe (boss) activo actualmente y guarda sus datos (HP, nivel, nombre) para la pestaña Arena
     const loadBossData = async (clanId: string) => {
         try {
             const res = await apiFetch(`/api/clans/${clanId}/bosses/active`);
@@ -218,7 +237,8 @@ export const ClanHubScreen = () => {
         } catch (e) { console.log(e); }
     };
 
-    // Clan Management
+    // --- Gestión del clan: crear, unirse, abandonar y eliminar ---
+    // Pide el nombre por prompt y solicita al backend crear un clan nuevo dentro de la organización del usuario
     const createClan = async () => {
         const name = prompt(t('clan.createPrompt'));
         if (!name || !user) return;
@@ -232,6 +252,7 @@ export const ClanHubScreen = () => {
         } catch (e) { Alert.alert(t('common.error'), t('common.serverError')); }
     };
 
+    // Solicita unirse a un clan existente; si el backend lo acepta, recargamos todos los datos del hub
     const joinClan = async (clanId: string) => {
         if (!user) return;
         try {
@@ -245,6 +266,7 @@ export const ClanHubScreen = () => {
         } catch (e) { Alert.alert(t('common.error'), t('common.serverError')); }
     };
 
+    // Tras confirmar, abandona el clan: limpia el estado local, desconecta el socket y vuelve a cargar (mostrará la lista de clanes)
     const leaveClan = async () => {
         if (!user || !clan) return;
         if (confirm(t('clan.leaveConfirm'))) {
@@ -265,11 +287,13 @@ export const ClanHubScreen = () => {
         }
     };
 
+    // Abre el modal de confirmación de borrado (solo disponible para el líder); el borrado real ocurre en confirmDeleteClan
     const requestDeleteClan = () => {
         if (!user || !clan) return;
         setShowDeleteModal(true);
     };
 
+    // Borra el clan definitivamente (DELETE al backend), limpia el estado local y desconecta el socket si tiene éxito
     const confirmDeleteClan = async () => {
         if (!user || !clan) return;
         setShowDeleteModal(false);
@@ -287,6 +311,7 @@ export const ClanHubScreen = () => {
         } catch (e) { Alert.alert(t('common.error'), t('common.serverError')); }
     };
 
+    // Envía el mensaje de chat actual por el socket (el servidor lo retransmitirá a todos como evento 'new_message') y limpia el input
     const sendMessage = () => {
         if (!inputText.trim() || !user || !clan || !socketRef.current) return;
         socketRef.current.emit('send_message', {
@@ -298,7 +323,8 @@ export const ClanHubScreen = () => {
         setInputText('');
     };
 
-    // Lobby Actions
+    // --- Acciones sobre lobbies (salas de combate previas a la batalla contra el jefe) ---
+    // Pide al servidor crear un nuevo lobby (público o privado) vía socket; el evento 'lobby_created' actualizará el estado local
     const createLobby = (isPublic: boolean) => {
         setShowLobbyModal(false);
         if (!socketRef.current || !user || !clan) return;
@@ -307,10 +333,11 @@ export const ClanHubScreen = () => {
             userId: user.id,
             userName: user.username,
             isPublic,
-            rpgClass: user.rpgClass || 'unassigned' // It will prompt for aura downstream if needed
+            rpgClass: user.rpgClass || 'unassigned' // El servidor pedirá elegir aura/clase más adelante si hace falta
         });
     };
 
+    // Une al usuario a un lobby por código (recibido como parámetro o pedido por prompt); pasamos a la pestaña Arena al solicitarlo
     const joinLobbyCode = (codePrefix?: string) => {
         if (!socketRef.current || !user || !clan) return;
         const code = codePrefix || prompt(t('clan.lobbyCodePrompt'));
@@ -326,17 +353,20 @@ export const ClanHubScreen = () => {
         }
     };
 
+    // El líder del lobby pide al servidor sincronizar el inicio de la partida para todos los miembros conectados a esa sala
     const startGameSync = () => {
         if (currentLobbyId && socketRef.current) {
             socketRef.current.emit('start_game_sync', currentLobbyId);
         }
     };
 
+    // Atajo para enfrentarse al jefe en solitario: simplemente crea un lobby privado solo para el usuario actual
     const startSolo = () => {
         if (!clan) return;
         createLobby(false);
     };
 
+    // Trae el contenido de la bóveda común del clan: objetos almacenados y puntos depositados en el banco
     const fetchVaultData = async (clanId: string) => {
         try {
             const res = await apiFetch(`/api/clans/${clanId}/vault`);
@@ -348,6 +378,7 @@ export const ClanHubScreen = () => {
         } catch (e) { }
     };
 
+    // El líder asciende o degrada a un miembro entre 'member' y 'officer'; al confirmar, cierra el menú y refresca la lista
     const handlePromoteMember = async (memberUserId: string, newRole: 'member' | 'officer') => {
         if (!user || !clan) return;
         try {
@@ -369,10 +400,12 @@ export const ClanHubScreen = () => {
         }
     };
 
+    // Reparte fondos o un objeto de la bóveda del clan a un miembro concreto: arma el body según el modo
+    // (isGrantingPoints decide si se envía amountPoints o itemId) y, si tiene éxito, refresca la bóveda
     const handleGrantVault = async () => {
         if (!user || !clan || !grantTargetMember) return;
         try {
-            const body = isGrantingPoints 
+            const body = isGrantingPoints
                 ? { userId: user.id, targetUserId: grantTargetMember.user_id, amountPoints: parseInt(pointsToGrant) }
                 : { userId: user.id, targetUserId: grantTargetMember.user_id, itemId: selectedVaultItem.item_id };
 
@@ -395,6 +428,7 @@ export const ClanHubScreen = () => {
         }
     };
 
+    // El miembro deposita parte de sus puntos personales en el banco común del clan; al confirmar limpia el formulario y refresca la bóveda
     const handleDepositOro = async () => {
         if (!user || !clan || !depositAmount) return;
         try {
@@ -420,7 +454,7 @@ export const ClanHubScreen = () => {
 
     if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={theme.colors.primary} /></View>;
 
-    // 1. NO CLAN VIEW (Rediseñado)
+    // Vista cuando el usuario todavía no pertenece a ningún clan: invita a fundar uno nuevo o a unirse a uno de la lista (allClans)
     if (!clan) {
         return (
             <View style={styles.container}>
@@ -468,7 +502,7 @@ export const ClanHubScreen = () => {
         );
     }
 
-    // 2. HAS CLAN VIEW
+    // Vista principal con clan: cabecera + pestañas (chat, arena, lobbies, miembros, bóveda) y sus modales asociados
     return (
         <View style={styles.container}>
             <View style={styles.header}>
@@ -506,7 +540,7 @@ export const ClanHubScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* CHAT TAB */}
+            {/* Pestaña de chat: historial de mensajes del clan en tiempo real más la barra de envío */}
             {activeTab === 'chat' && (
                 <View style={{ flex: 1 }}>
                     <ScrollView ref={scrollViewRef} contentContainerStyle={styles.chatList}>
@@ -536,7 +570,7 @@ export const ClanHubScreen = () => {
                 </View>
             )}
 
-            {/* ARENA TAB */}
+            {/* Pestaña de Arena: muestra el jefe activo (con su barra de HP) y las opciones para crear/unirse a un lobby de combate */}
             {activeTab === 'arena' && (
                 <ScrollView contentContainerStyle={{ padding: 20, alignItems: 'center' }}>
                     {boss ? (
@@ -578,7 +612,7 @@ export const ClanHubScreen = () => {
                                     <Text style={styles.primaryBtnText}>{t('clan.privateCode')}</Text>
                                 </TouchableOpacity>
 
-                                {/* Solo Option */}
+                                {/* Aqui se permite atacar al jefe en solitario, creando un lobby privado solo para uno mismo */}
                                 <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.primary }]} onPress={startSolo}>
                                     <Ionicons name="person" size={20} color={theme.colors.primary} style={{marginRight: 8}} />
                                     <Text style={[styles.primaryBtnText, { color: theme.colors.primary }]}>{t('clan.attackSolo')}</Text>
@@ -589,7 +623,7 @@ export const ClanHubScreen = () => {
                 </ScrollView>
             )}
 
-            {/* LOBBIES TAB */}
+            {/* Pestaña de Lobbies: lista de salas públicas abiertas en el clan a las que cualquiera puede unirse directamente */}
             {activeTab === 'lobbies' && (
                  <ScrollView contentContainerStyle={{ padding: 20, alignItems: 'center' }}>
                      <View style={[styles.sectionHeader, {width: '100%', maxWidth: 600}]}>
@@ -628,14 +662,14 @@ export const ClanHubScreen = () => {
                  </ScrollView>
             )}
 
-            {/* MEMBERS TAB */}
+            {/* Pestaña de Miembros: ranking del clan ordenado por nivel, con controles de gestión para líderes y oficiales */}
             {activeTab === 'members' && (
                 <ScrollView contentContainerStyle={{ padding: 20 }}>
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>{t('clan.membersCount', { count: clanMembers.length })}</Text>
                     </View>
 
-                    {/* Lider Controls */}
+                    {/* Estos botones de administración (cambiar nombre, banner, eliminar clan) solo aparecen si el usuario actual es el líder */}
                     {clanMembers.find(m => m.user_id === user?.id)?.role === 'leader' && (
                         <View style={{ marginBottom: 25, backgroundColor: theme.colors.surface + '80', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }}>
                             <Text style={{ color: theme.colors.text, fontWeight: 'bold', marginBottom: 12, fontSize: 16 }}>{t('clan.adminActions')}</Text>
@@ -664,16 +698,17 @@ export const ClanHubScreen = () => {
                             const amILeader  = myRole === 'leader';
                             const amIOfficer = myRole === 'officer';
                             const isMe       = member.user_id === user?.id;
-                            // Leader can kick officers and members; officer can only kick regular members
+                            // Reglas de permisos de expulsión: el líder puede expulsar a oficiales y miembros;
+                            // un oficial solo puede expulsar a miembros normales (nunca a otro oficial ni al líder, ni a sí mismo)
                             const canIKick   = !isMe && !isLeader &&
                                                (amILeader || (amIOfficer && !isOfficer));
-                            
-                            // Stripe logic for list
+
+                            // Alterna el color de fondo entre filas pares e impares para que la lista se lea mejor (efecto cebra)
                             const isEven = index % 2 === 0;
                             const bgColor = isEven ? theme.colors.surface : theme.colors.background;
 
                             return (
-                                // Plain View — no clickable card so button clicks are never swallowed
+                                // Usamos un View simple (no una tarjeta pulsable) para que las pulsaciones sobre los botones internos no sean "absorbidas" por el contenedor
                                 <View
                                     key={member.user_id}
                                     style={{
@@ -691,12 +726,12 @@ export const ClanHubScreen = () => {
                                         elevation: 1
                                     }}
                                 >
-                                    {/* Ranking Number */}
+                                    {/* Posición en el ranking del clan (1º, 2º...), calculada por el índice del array ya ordenado por nivel */}
                                     <View style={{ width: 30, alignItems: 'center' }}>
                                         <Text style={{ color: theme.colors.textSecondary, fontWeight: 'bold', fontSize: 16 }}>{index + 1}.</Text>
                                     </View>
 
-                                    {/* Level Badge (Shield overlay) */}
+                                    {/* Insignia de nivel: escudo con el número de nivel superpuesto, en dorado para el líder y azul para el resto */}
                                     <View style={{ width: 40, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                         <Ionicons name="shield" size={36} color={isLeader ? "#D69E2E" : "#3182CE"} />
                                         <Text style={{ position: 'absolute', color: '#FFF', fontWeight: '900', fontSize: 14 }}>
@@ -704,7 +739,7 @@ export const ClanHubScreen = () => {
                                         </Text>
                                     </View>
 
-                                    {/* Profile Avatar */}
+                                    {/* Foto de perfil del miembro; si no tiene, mostramos un icono genérico de persona como respaldo */}
                                     <View style={{ marginHorizontal: 10 }}>
                                     {member.profile_picture ? (
                                         <Image source={{ uri: member.profile_picture }} style={{ width: 42, height: 42, borderRadius: 8, borderWidth: 1, borderColor: '#555' }} />
@@ -715,7 +750,7 @@ export const ClanHubScreen = () => {
                                     )}
                                     </View>
 
-                                    {/* Info details */}
+                                    {/* Nombre del miembro (con etiqueta "Tú" si es el usuario actual), su rango y su clase RPG si la tiene */}
                                     <View style={{ flex: 1, justifyContent: 'center' }}>
                                         <Text style={{ color: theme.colors.text, fontWeight: 'bold', fontSize: 17, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: {width: 0, height: 1}, textShadowRadius: 1 }}>
                                             {member.username || member.name} {isMe && <Text style={{color: theme.colors.primary, fontSize: 12}}> ({t('common.you', { defaultValue: 'Tú' })})</Text>}
@@ -732,7 +767,7 @@ export const ClanHubScreen = () => {
                                         </View>
                                     </View>
 
-                                    {/* RPG Info */}
+                                    {/* Repetimos la clase RPG aquí como columna independiente, con la etiqueta "Clase Mágica"/"Novato" si no tiene */}
                                     <View style={{ alignItems: 'flex-end', marginRight: 8 }}>
                                         <Text style={{ color: theme.colors.textSecondary, fontSize: 11, marginBottom: 2 }}>{t('clan.magicClass')}</Text>
                                         <Text style={{ color: theme.colors.text, fontWeight: 'bold', fontSize: 14 }}>
@@ -740,10 +775,10 @@ export const ClanHubScreen = () => {
                                         </Text>
                                     </View>
 
-                                    {/* Action buttons — each is its own independent touchable, no nesting conflict */}
+                                    {/* Botones de acción — cada uno es un touchable independiente para que no haya conflicto de toques anidados */}
                                     {(amILeader || amIOfficer) && !isMe && (
                                         <View style={{ flexDirection: 'row', gap: 6 }}>
-                                            {/* Manage (promote/demote) — only leader */}
+                                            {/* Gestión (ascender/degradar) — visible solo para el líder */}
                                             {amILeader && (
                                                 <TouchableOpacity
                                                     onPress={() => { setSelectedMemberActions(member); setIsActionModalVisible(true); }}
@@ -752,7 +787,7 @@ export const ClanHubScreen = () => {
                                                     <Ionicons name="settings-outline" size={18} color={theme.colors.textSecondary} />
                                                 </TouchableOpacity>
                                             )}
-                                            {/* Kick */}
+                                            {/* Expulsar — visible solo cuando canIKick lo permite según el rol del miembro y el del usuario actual */}
                                             {canIKick && (
                                                 <TouchableOpacity
                                                     onPress={() => handleKickMember(member.user_id)}
@@ -770,7 +805,7 @@ export const ClanHubScreen = () => {
                 </ScrollView>
             )}
 
-            {/* LOBBY CREATION MODAL */}
+            {/* Aqui se elige la visibilidad del lobby a crear: público (cualquiera del clan puede unirse) o privado (solo con código) */}
             <Modal visible={showLobbyModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -793,7 +828,7 @@ export const ClanHubScreen = () => {
                 </View>
             </Modal>
 
-            {/* DELETE CLAN MODAL */}
+            {/* Confirmación de eliminación del clan: acción irreversible, solo accesible para el líder */}
             <Modal visible={showDeleteModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -828,6 +863,7 @@ export const ClanHubScreen = () => {
                             <TouchableOpacity style={[styles.distributeBtn, { backgroundColor: '#4A5568' }]} onPress={() => setIsDepositModalVisible(true)}>
                                 <Text style={styles.distributeBtnText}>Depositar</Text>
                             </TouchableOpacity>
+                            {/* El botón de repartir fondos solo se muestra a líderes y oficiales (control de permisos por rol) */}
                             {(clanMembers.find(m => m.user_id === user?.id)?.role === 'leader' || clanMembers.find(m => m.user_id === user?.id)?.role === 'officer') && (
                                 <TouchableOpacity style={styles.distributeBtn} onPress={() => {
                                     setIsGrantingPoints(true);
@@ -872,7 +908,7 @@ export const ClanHubScreen = () => {
                 </View>
             )}
 
-            {/* MODAL: Member Actions (Promote/Kick) */}
+            {/* Aqui mostramos el menú de gestión de un miembro: ascender/degradar de rango o expulsarlo del clan */}
             <Modal visible={isActionModalVisible} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.actionMenu}>
@@ -901,7 +937,7 @@ export const ClanHubScreen = () => {
                 </View>
             </Modal>
 
-            {/* MODAL: Grant Vault Item/Points */}
+            {/* Aqui se configura el reparto desde la bóveda: o bien una cantidad de puntos del banco, o bien un objeto guardado, hacia el miembro elegido */}
             <Modal visible={isGrantModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.grantModal}>
@@ -949,7 +985,7 @@ export const ClanHubScreen = () => {
                 </View>
             </Modal>
 
-            {/* KICK MEMBER CONFIRMATION MODAL */}
+            {/* Confirmación de expulsión: solo se dispara la llamada al backend (confirmKick) si el usuario confirma aquí */}
             <Modal visible={kickTargetId !== null} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -970,7 +1006,7 @@ export const ClanHubScreen = () => {
                 </View>
             </Modal>
 
-            {/* MODAL: Deposit Gold */}
+            {/* Aqui el miembro indica cuántos puntos personales quiere depositar en el banco común del clan */}
             <Modal visible={isDepositModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.grantModal}>
@@ -1026,11 +1062,11 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     tabActive: { borderBottomWidth: 3, borderBottomColor: theme.colors.primary },
     tabText: { fontWeight: 'bold', color: theme.colors.textSecondary, fontSize: 13 },
     
-    // MODAL BUTTONS
+    // Botones de los modales
     cancelBtn: { paddingVertical: 14, paddingHorizontal: 20, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.colors.border },
     cancelBtnText: { color: theme.colors.textSecondary, fontWeight: 'bold', fontSize: 15 },
     
-    // UI Cards & Elements
+    // Tarjetas y elementos generales de interfaz
     primaryBtn: { backgroundColor: theme.colors.primary, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 12, width: '100%', maxWidth: 400, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', elevation: 2 },
     primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15, letterSpacing: 1 },
     
@@ -1047,7 +1083,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     joinBtn: { backgroundColor: theme.colors.success, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
     joinBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
     
-    // CHAT
+    // Estilos del chat del clan
     chatList: { padding: 16, paddingBottom: 20 },
     chatAnnounce: { width: '100%', alignItems: 'center', marginBottom: 16 },
     chatAnnounceText: { backgroundColor: theme.colors.border, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, fontSize: 12, color: theme.colors.textSecondary, overflow: 'hidden' },
@@ -1060,7 +1096,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     input: { flex: 1, backgroundColor: theme.colors.background, borderRadius: 20, paddingHorizontal: 16, color: theme.colors.text, height: 44, borderWidth: 1, borderColor: theme.colors.border },
     sendBtn: { width: 44, height: 44, backgroundColor: theme.colors.primary, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
     
-    // ARENA
+    // Estilos de la arena (combate contra el jefe del clan y lobbies)
     bossBanner: { width: '100%', maxWidth: 600, backgroundColor: theme.colors.surface, padding: 20, borderRadius: 16, alignItems: 'center', marginBottom: 30, borderWidth: 2, borderColor: theme.colors.error, shadowColor: theme.colors.error, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
     bossLevelTag: { backgroundColor: '#FFD700', color: '#000', fontWeight: '900', padding: 4, paddingHorizontal: 12, borderRadius: 10, alignSelf: 'center', marginBottom: 8, fontSize: 12 },
     bossTitle: { fontSize: 24, fontWeight: 'bold', color: theme.colors.error, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 2 },
@@ -1073,12 +1109,12 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     lobbyCode: { fontSize: 24, fontWeight: 'bold', color: '#3182CE', backgroundColor: 'rgba(49, 130, 206, 0.1)', paddingVertical: 8, paddingHorizontal: 20, borderRadius: 12, overflow: 'hidden', marginBottom: 12 },
     lobbyDesc: { color: theme.colors.textSecondary, textAlign: 'center', fontSize: 13, lineHeight: 20 },
     
-    // MODAL
+    // Estilos generales de los modales
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     modalContent: { backgroundColor: theme.colors.surface, width: '100%', maxWidth: 400, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.border },
     modalTitle: { fontSize: 20, fontWeight: 'bold', color: theme.colors.text, marginBottom: 16 },
     
-    // Vault Styles
+    // Estilos del banco/almacen del clan
     vaultHeader: { backgroundColor: theme.colors.surface, padding: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     bankBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.background, padding: 12, borderRadius: 10, flex: 1, marginRight: 15 },
     bankLabel: { color: theme.colors.textSecondary, fontSize: 12 },
@@ -1093,7 +1129,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     vaultItemQty: { color: theme.colors.textSecondary, fontSize: 11 },
     grantBtn: { backgroundColor: '#38A169', padding: 8, borderRadius: 6, alignItems: 'center', marginTop: 8 },
     
-    // Action Menu Styles
+    // Estilos del menu de acciones
     actionMenu: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 20, width: '80%', maxWidth: 400 },
     menuTitle: { fontSize: 18, fontWeight: 'bold', color: theme.colors.text, marginBottom: 20, textAlign: 'center' },
     menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: theme.colors.border, gap: 15 },
@@ -1101,7 +1137,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     menuClose: { marginTop: 10, padding: 15, alignItems: 'center' },
     menuCloseText: { color: theme.colors.textSecondary, fontWeight: 'bold' },
     
-    // Grant Modal Styles
+    // Estilos del modal para conceder objetos del banco a un miembro
     grantModal: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 24, width: '90%', maxWidth: 500 },
     targetMember: { padding: 12, borderRadius: 8, backgroundColor: theme.colors.background, marginBottom: 8, borderWidth: 1, borderColor: theme.colors.border },
     targetMemberActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },

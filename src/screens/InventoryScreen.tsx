@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthService } from '../services/AuthService';
 import { apiFetch } from '../utils/apiFetch';
 
-// Custom ARK-Style Progress Bar (Main Stats)
+// Barra de progreso al estilo "ARK" para las estadisticas principales (vida, mana, carga, experiencia):
+// recibe el valor actual y el maximo, y dibuja un relleno proporcional con un brillo de neon en modo oscuro
 const ArkProgressBar = ({ label, current, max, color, icon, theme }: any) => (
     <View style={styles(theme).barWrapper}>
         <View style={styles(theme).barHeader}>
@@ -27,14 +28,15 @@ const ArkProgressBar = ({ label, current, max, color, icon, theme }: any) => (
     </View>
 );
 
-// Stat Row with Integrated Background Progress
+// Fila de atributo RPG (fuerza, agilidad, etc.) que muestra su valor actual sobre el maximo, con un relleno
+// de fondo proporcional al porcentaje, y un boton "+" para subirlo si el jugador tiene puntos de habilidad disponibles
 const IntegratedStatRow = ({ label, value, max, icon, onUpgrade, canUpgrade, theme }: any) => {
     const fillPercent = Math.min(100, (value / max) * 100);
     const accentColor = theme.isDark ? '#00FFFF' : theme.colors.primary;
 
     return (
         <View style={styles(theme).statRowContainer}>
-            {/* Background Fill Overlay */}
+            {/* Capa de relleno de fondo que representa visualmente el porcentaje del atributo */}
             <div style={{ 
                 position: 'absolute', 
                 left: 0, 
@@ -63,6 +65,8 @@ const IntegratedStatRow = ({ label, value, max, icon, onUpgrade, canUpgrade, the
     );
 };
 
+// Pantalla de inventario al estilo RPG: muestra el equipo del jugador (armas, armadura), su inventario de objetos,
+// sus estadisticas (vida, mana, atributos) y permite equipar objetos, donarlos al clan o venderlos al mercader ambulante
 export const InventoryScreen = () => {
     const { t } = useTranslation();
     const navigation = useNavigation<any>();
@@ -80,10 +84,14 @@ export const InventoryScreen = () => {
     const [pendingClanDonation, setPendingClanDonation] = useState<any>(null);
     const [pendingSellItem, setPendingSellItem] = useState<any>(null);
 
+    // Al montar la pantalla cargamos el inventario, las estadisticas RPG y el oro del usuario actual
     useEffect(() => {
         loadData();
     }, []);
 
+    // Trae del servidor el inventario completo del usuario junto con sus stats RPG, oro y peso total cargado.
+    // Las estadisticas de combate (combatStats) pueden llegar como JSON en texto desde la base de datos,
+    // asi que las parseamos aqui para que el resto de la pantalla siempre trabaje con objetos
     const loadData = async () => {
         setLoading(true);
         const currentUser = await AuthService.getSavedUser();
@@ -109,6 +117,8 @@ export const InventoryScreen = () => {
         setLoading(false);
     };
 
+    // Gasta un punto de habilidad disponible para subir el atributo indicado (vitalidad, fuerza, etc.)
+    // y recarga los datos para reflejar el nuevo valor y el contador de puntos restantes
     const handleUpgradeStat = async (stat: string) => {
         if (!user || !rpgStats || rpgStats.skill_points <= 0) return;
         try {
@@ -128,6 +138,9 @@ export const InventoryScreen = () => {
         }
     };
 
+    // Equipa o desequipa un objeto del inventario. Le decimos al servidor el tipo de objeto y si es un arma
+    // a dos manos (isTwoHanded) para que pueda gestionar las reglas de exclusion entre ranuras (p.ej. liberar
+    // la mano secundaria al equipar un arma a dos manos)
     const toggleEquip = async (item: any) => {
         if (!user) return;
         const willEquip = !item.is_equipped;
@@ -150,10 +163,13 @@ export const InventoryScreen = () => {
         }
     };
 
+    // Dona puntos o un objeto del inventario al banco/almacen del clan. Si "points" es mayor que 0 donamos
+    // puntos; si no, donamos el objeto actualmente seleccionado (selectedItem). Primero comprobamos que el
+    // usuario pertenezca a un clan, ya que sin clan no hay banco al que donar
     const handleClanDeposit = async (points: number = 0) => {
         if (!user) return;
-        
-        // Check if user has a clan first
+
+        // Comprobamos primero si el usuario pertenece a algun clan
         const clanRes = await apiFetch(`/api/users/${user.id}/clan`);
         const clanData = await clanRes.json();
         if (!clanData.clan) {
@@ -184,14 +200,18 @@ export const InventoryScreen = () => {
         }
     };
 
-    // The wandering merchant (who only buys items on Sundays and Tuesdays) purchases items flagged is_merchant_buyable
+    // El mercader ambulante (que solo compra objetos los domingos y los martes) adquiere los objetos
+    // marcados con is_merchant_buyable; getDay() devuelve 0 para domingo y 2 para martes
     const isMerchantDay = [0, 2].includes(new Date().getDay());
 
+    // Abre el modal de confirmacion de venta guardando el objeto pendiente de vender
     const handleSellToMerchant = (item: any) => {
         if (!user) return;
         setPendingSellItem(item);
     };
 
+    // Confirma la venta del objeto pendiente al mercader: lo envia al servidor, que calcula y devuelve
+    // la recompensa en puntos, y recarga el inventario para reflejar que el objeto ya no esta disponible
     const confirmSellToMerchant = async () => {
         if (!user || !pendingSellItem) return;
         const item = pendingSellItem;
@@ -215,18 +235,22 @@ export const InventoryScreen = () => {
         }
     };
 
+    // Confirma la donacion del objeto pendiente al clan, reutilizando handleClanDeposit sin pasar puntos
+    // (lo que hace que done el objeto seleccionado en lugar de una cantidad de puntos)
     const confirmClanDonation = async () => {
         if (!pendingClanDonation) return;
         setPendingClanDonation(null);
         await handleClanDeposit();
     };
 
+    // Lista del inventario filtrada por el texto de busqueda (comparando nombres en minusculas)
     const filteredInventory = useMemo(() => {
         return inventory.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [inventory, searchQuery]);
 
-    // Materials are fungible — stack identical ones into a single card showing a quantity badge
-    // instead of letting them flood the grid with one slot per copy.
+    // Los materiales son fungibles — agrupamos copias identicas en una sola tarjeta con una insignia de
+    // cantidad ("x3"), en vez de dejar que inunden la cuadricula con una ranura por cada copia individual.
+    // Guardamos los IDs de inventario originales en stackedIds por si se necesitan para acciones individuales
     const stackedInventory = useMemo(() => {
         const stacks = new Map<string, any>();
         const result: any[] = [];
@@ -248,10 +272,14 @@ export const InventoryScreen = () => {
         return result;
     }, [filteredInventory]);
 
+    // Busca en el inventario el objeto equipado que ocupa una ranura concreta. slotType puede ser un unico
+    // tipo (p.ej. 'helmet') o un array de tipos compatibles (p.ej. ['weapon_1h_right', 'weapon_2h'] para la mano principal)
     const getEquippedInSlot = (slotType: string | string[]) => {
         return inventory.find(i => i.is_equipped && (Array.isArray(slotType) ? slotType.includes(i.type) : i.type === slotType));
     };
 
+    // Pinta una ranura de equipo (casco, pecho, arma...): muestra la imagen del objeto equipado o un icono
+    // generico vacio, y al pulsarla abre el modal de detalles del objeto equipado en esa ranura
     const renderEquipSlot = (slotTypes: string | string[], icon: any, label: string) => {
         const equipped = getEquippedInSlot(slotTypes);
         const accentColor = theme.isDark ? 'rgba(0, 255, 255, 0.2)' : 'rgba(33, 182, 104, 0.2)';
@@ -285,7 +313,7 @@ export const InventoryScreen = () => {
 
     return (
         <View style={currentStyles.fullContainer}>
-            {/* HUD Header */}
+            {/* Cabecera estilo HUD: nombre del jugador, nivel, clase RPG, oro y boton para donar puntos al clan */}
             <View style={currentStyles.hudHeader}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={currentStyles.backBtn}>
                     <Ionicons name="apps-outline" size={28} color={theme.colors.primary} />
@@ -332,9 +360,9 @@ export const InventoryScreen = () => {
                 </View>
             </View>
 
-            {/* Main Content Areas */}
+            {/* Areas principales de contenido: en web se distribuyen en tres columnas lado a lado, en movil se apilan */}
             <View style={currentStyles.mainLayout}>
-                {/* LEFT COLUMN: INVENTORY */}
+                {/* COLUMNA IZQUIERDA: cuadricula del inventario con buscador */}
                 <View style={currentStyles.columnInventory}>
                     <View style={currentStyles.panelHeader}>
                         <Text style={currentStyles.panelTitle}>INVENTARIO</Text>
@@ -380,14 +408,14 @@ export const InventoryScreen = () => {
                     </ScrollView>
                 </View>
 
-                {/* MIDDLE COLUMN: EQUIPMENT TOP -> STATUS MIDDLE -> STATS BOTTOM */}
+                {/* COLUMNA CENTRAL: ranuras de armadura arriba, barras de estado en medio, atributos RPG abajo */}
                 <View style={currentStyles.columnStats}>
                     <View style={currentStyles.panelHeader}>
                         <Text style={currentStyles.panelTitle}>ESTADO Y EQUIPO</Text>
                     </View>
                     
                     <ScrollView style={currentStyles.statsScroll} showsVerticalScrollIndicator={false}>
-                        {/* 1. ARMOR SLOTS (TOP) */}
+                        {/* 1. RANURAS DE ARMADURA (arriba): casco, pecho, piernas, manos y pies */}
                         <View style={currentStyles.armorGrid}>
                             <View style={currentStyles.armorRow}>
                                 {renderEquipSlot('helmet', 'headset', 'CASCO')}
@@ -402,13 +430,13 @@ export const InventoryScreen = () => {
 
                         <View style={currentStyles.divider} />
 
-                        {/* 2. MAIN STATUS BARS */}
+                        {/* 2. BARRAS DE ESTADO PRINCIPALES: salud, mana, carga (peso) y experiencia hacia el siguiente nivel */}
                         <ArkProgressBar label="SALUD" current={rpgStats?.current_hp} max={rpgStats?.max_hp} color="#FF4444" icon="heart" theme={theme} />
                         <ArkProgressBar label="MANÁ" current={rpgStats?.mana} max={rpgStats?.max_mana} color="#44AAFF" icon="flash" theme={theme} />
                         <ArkProgressBar label="CARGA" current={totalWeight} max={rpgStats?.max_weight} color="#AAFF44" icon="barbell" theme={theme} />
                         <ArkProgressBar label="EXPERIENCIA" current={rpgStats?.exp} max={xpNeeded} color="#FFD700" icon="star" theme={theme} />
 
-                        {/* 3. RPG ATTRIBUTES */}
+                        {/* 3. ATRIBUTOS RPG: lista de estadisticas mejorables (vitalidad, fuerza, agilidad...) y los puntos de habilidad disponibles para repartir */}
                         <View style={currentStyles.statList}>
                             <Text style={currentStyles.skillPointText}>PUNTOS DISPONIBLES: {rpgStats?.skill_points || 0}</Text>
                             {[
@@ -435,14 +463,14 @@ export const InventoryScreen = () => {
                     </ScrollView>
                 </View>
 
-                {/* RIGHT COLUMN: AVATAR & WEAPONS */}
+                {/* COLUMNA DERECHA: silueta del personaje y ranuras de armas (principal y secundaria) */}
                 <View style={currentStyles.columnCharacter}>
                     <View style={currentStyles.panelHeader}>
                         <Text style={currentStyles.panelTitle}>VISTA PERSONAJE</Text>
                     </View>
                     
                     <View style={currentStyles.charPreviewBox}>
-                        {/* Using a more stable silhouette from a common UI library source */}
+                        {/* Usamos una silueta generica de una libreria de iconos comun, mas estable que generar un avatar dinamico */}
                         <Image 
                             source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3233/3233483.png' }} 
                             style={currentStyles.characterSilhouette} 
@@ -450,7 +478,7 @@ export const InventoryScreen = () => {
                         />
                     </View>
 
-                    {/* Weapon Slots at bottom */}
+                    {/* Ranuras de armas en la parte inferior: mano principal y mano secundaria */}
                     <View style={currentStyles.weaponSlots}>
                         <View style={currentStyles.weaponSlotWrapper}>
                             {renderEquipSlot(['weapon_1h_right', 'weapon_2h'], 'flash', 'PRINCIPAL')}
@@ -462,7 +490,8 @@ export const InventoryScreen = () => {
                 </View>
             </View>
 
-            {/* ITEM DETAILS MODAL */}
+            {/* MODAL DE DETALLES DEL OBJETO: imagen, descripcion, estadisticas de combate, habilidades especiales
+                y acciones disponibles (equipar/desequipar, vender al mercader, donar al clan) */}
             <Modal visible={!!selectedItem} transparent animationType="fade" onRequestClose={() => setSelectedItem(null)}>
                 <Pressable style={currentStyles.modalOverlay} onPress={() => setSelectedItem(null)}>
                     <Pressable style={currentStyles.itemDetailsPanel} onPress={e => e.stopPropagation()}>
@@ -517,7 +546,7 @@ export const InventoryScreen = () => {
                                         ))}
                                     </View>
 
-                                    {/* Habilidades / Lore Section */}
+                                    {/* Seccion de habilidades especiales / lore: texto descriptivo segun el tipo de objeto */}
                                     <View style={currentStyles.abilitiesBox}>
                                         <Text style={currentStyles.sectionTitle}>HABILIDADES ESPECIALES</Text>
                                         <View style={currentStyles.abilityItem}>
@@ -582,7 +611,7 @@ export const InventoryScreen = () => {
                 </Pressable>
             </Modal>
 
-            {/* CLAN DONATION CONFIRMATION MODAL — Alert.alert with buttons is a no-op on web */}
+            {/* MODAL DE CONFIRMACION DE DONACION AL CLAN — usamos un Modal propio porque Alert.alert con botones no funciona en web */}
             <Modal visible={pendingClanDonation !== null} transparent animationType="fade">
                 <View style={currentStyles.modalOverlay}>
                     <View style={currentStyles.confirmModalBox}>
@@ -603,7 +632,7 @@ export const InventoryScreen = () => {
                 </View>
             </Modal>
 
-            {/* SELL TO MERCHANT CONFIRMATION MODAL — Alert.alert with buttons is a no-op on web */}
+            {/* MODAL DE CONFIRMACION DE VENTA AL MERCADER — igual que arriba, Alert.alert con botones no funciona en web */}
             <Modal visible={pendingSellItem !== null} transparent animationType="fade">
                 <View style={currentStyles.modalOverlay}>
                     <View style={currentStyles.confirmModalBox}>
@@ -686,12 +715,12 @@ const styles = (theme: AppTheme) => StyleSheet.create({
     quantityText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
     equippedDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary, borderWidth: 1, borderColor: '#FFF' },
 
-    // Top Armor Layout
+    // Disposicion de las ranuras de armadura (parte superior de la columna central)
     armorGrid: { alignItems: 'center', marginBottom: 25 },
     armorRow: { flexDirection: 'row', gap: 18 },
     divider: { height: 1.5, backgroundColor: theme.colors.border, marginVertical: 20, width: '100%' },
 
-    // Scrollable Stats
+    // Contenedor con scroll para las barras de estado y los atributos RPG
     statsScroll: { flex: 1 },
     barWrapper: { marginBottom: 18 },
     barHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
@@ -701,7 +730,7 @@ const styles = (theme: AppTheme) => StyleSheet.create({
     statList: { marginTop: 10, paddingTop: 15 },
     skillPointText: { color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
     
-    // Integrated Stat Rows
+    // Filas de atributos con relleno de fondo integrado (IntegratedStatRow)
     statRowContainer: { 
         height: 48, 
         backgroundColor: theme.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', 
@@ -719,7 +748,7 @@ const styles = (theme: AppTheme) => StyleSheet.create({
     maxText: { color: theme.colors.textSecondary, fontSize: 11 },
     plusBtn: { marginLeft: 5 },
 
-    // Right Column
+    // Columna derecha: vista previa del personaje
     charPreviewBox: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', minHeight: 400 },
     characterSilhouette: { width: '100%', height: '100%', opacity: theme.isDark ? 0.4 : 0.25 },
     weaponSlots: { flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 30, paddingBottom: 10 },
@@ -741,7 +770,7 @@ const styles = (theme: AppTheme) => StyleSheet.create({
     slotOverlay: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(0,0,0,0.65)', paddingVertical: 3, borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
     slotLabel: { color: '#FFF', fontSize: 8, textAlign: 'center', fontWeight: 'bold' },
 
-    // Modal Details Enhancement
+    // Estilos del modal de detalles del objeto y de los modales de confirmacion
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center' },
     confirmModalBox: {
         width: Platform.OS === 'web' ? 380 : '85%',

@@ -5,6 +5,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 
 export const GameHubScreen = ({ navigation, route }: any) => {
     const { theme } = useTheme();
+    // Si venimos desde una actividad concreta (p.ej. clase del dia), la propagamos a los minijuegos para registrar el progreso correcto
     const activityType = route?.params?.activityType;
 
     const styles = StyleSheet.create({
@@ -101,7 +102,7 @@ export const GameHubScreen = ({ navigation, route }: any) => {
 
             <View style={styles.content}>
                 <View style={styles.grid}>
-                    {/* Solo Training (Jumbi Vocabulary) */}
+                    {/* Acceso al minijuego de vocabulario (Jumbi): otorga HP y puntos individuales */}
                     <TouchableOpacity 
                         style={styles.card} 
                         onPress={() => navigation.navigate('VocabularyGame', { activityType })}
@@ -121,7 +122,7 @@ export const GameHubScreen = ({ navigation, route }: any) => {
                         </View>
                     </TouchableOpacity>
 
-                    {/* Solo Training (Technique Image Matching) */}
+                    {/* Acceso al minijuego de emparejar imagen-tecnica: otorga el doble de puntos que el de vocabulario */}
                     <TouchableOpacity
                         style={styles.card}
                         onPress={() => navigation.navigate('TechniqueGame', { activityType })}
@@ -141,7 +142,7 @@ export const GameHubScreen = ({ navigation, route }: any) => {
                         </View>
                     </TouchableOpacity>
 
-                    {/* Clan Hub */}
+                    {/* Acceso a clanes, chat grupal y batallas contra el Jefe Semanal */}
                     <TouchableOpacity 
                         style={styles.card} 
                         onPress={() => navigation.navigate('ClanHubScreen', { activityType })}
@@ -161,7 +162,7 @@ export const GameHubScreen = ({ navigation, route }: any) => {
                         </View>
                     </TouchableOpacity>
 
-                    {/* Market */}
+                    {/* Acceso a la tienda del club para canjear puntos y oro por objetos */}
                     <TouchableOpacity 
                         style={styles.card} 
                         onPress={() => navigation.navigate('Market')}
@@ -181,7 +182,7 @@ export const GameHubScreen = ({ navigation, route }: any) => {
                         </View>
                     </TouchableOpacity>
 
-                    {/* Inventory */}
+                    {/* Acceso al inventario para equipar objetos comprados (armas, armadura, consumibles) */}
                     <TouchableOpacity 
                         style={styles.card} 
                         onPress={() => navigation.navigate('Inventory')}

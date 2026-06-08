@@ -13,6 +13,7 @@ export const Button: React.FC<ButtonProps> = ({ title, onPress, variant = 'prima
     const { theme } = useTheme();
     const styles = createStyles(theme);
 
+    // Aqui mapeamos la variante del boton al color del tema que le corresponde
     const getBackgroundColor = () => {
         switch (variant) {
             case 'primary': return theme.colors.primary;
@@ -40,14 +41,14 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         borderRadius: theme.borderRadius.m,
         alignItems: 'center',
         justifyContent: 'center',
-        elevation: 3, // Android shadow
-        shadowColor: '#000', // iOS shadow
+        elevation: 3, // Sombra para Android
+        shadowColor: '#000', // Sombra para iOS
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 4,
     },
     text: {
-        color: '#FFFFFF', // White text for better contrast on dark/green
+        color: '#FFFFFF', // Texto blanco para que contraste bien sobre fondos oscuros/verdes
         fontSize: 16,
         fontWeight: 'bold',
         textTransform: 'uppercase',

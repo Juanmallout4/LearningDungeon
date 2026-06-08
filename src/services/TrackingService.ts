@@ -1,6 +1,11 @@
 import { apiFetch } from '../utils/apiFetch';
 
+// Servicio de seguimiento (evaluaciones, asistencia y reportes de club). Todos los métodos usan apiFetch
+// (que añade el token de auth), parsean la respuesta JSON y lanzan un Error con data.error si response.ok es falso.
+
 export const TrackingService = {
+    // GET /api/users/:userId/evaluations[?month=&year=]: lista de evaluaciones de técnica del alumno,
+    // opcionalmente filtradas por mes/año; devuelve data.evaluations
     getEvaluations: async (userId: string, month?: number, year?: number) => {
         try {
             const query = (month !== undefined && year !== undefined) ? `?month=${month}&year=${year}` : '';
@@ -14,6 +19,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/users/:userId/attendance[?month=&year=]: historial de asistencia del alumno, devuelve data.attendance
     getAttendance: async (userId: string, month?: number, year?: number) => {
         try {
             const query = (month !== undefined && year !== undefined) ? `?month=${month}&year=${year}` : '';
@@ -27,6 +33,8 @@ export const TrackingService = {
         }
     },
 
+    // POST /api/groups/:groupId/technique-requests: crea una solicitud de evaluación de técnica para el grupo
+    // (instructor, técnica/actividad/vocabulario y opcionalmente una imagen); devuelve data.request
     requestTechnique: async (groupId: string, payload: { instructorId: string; activityId?: string; vocabularyId?: string; techniqueName: string; imageUrl?: string }) => {
         try {
             const response = await apiFetch(`/api/groups/${groupId}/technique-requests`, {
@@ -43,6 +51,8 @@ export const TrackingService = {
         }
     },
 
+    // POST /api/technique-requests/:requestId/evaluations: registra la evaluación (puntuación, comentario y
+    // puntos otorgados) que resuelve una solicitud de técnica pendiente; devuelve data.evaluation
     submitTechniqueEvaluation: async (requestId: string, payload: { studentId: string; instructorId: string; score: number; comment?: string; pointsAwarded?: number }) => {
         try {
             const response = await apiFetch(`/api/technique-requests/${requestId}/evaluations`, {
@@ -59,6 +69,7 @@ export const TrackingService = {
         }
     },
 
+    // POST /api/evaluations: guarda una evaluación genérica (estructura libre vía evaluationData); devuelve la respuesta cruda
     saveEvaluation: async (evaluationData: any) => {
         try {
             const response = await apiFetch('/api/evaluations', {
@@ -75,6 +86,7 @@ export const TrackingService = {
         }
     },
 
+    // POST /api/category-evaluations: guarda una evaluación por categoría (rúbrica agrupada); devuelve la respuesta cruda
     saveCategoryEvaluation: async (evaluationData: any) => {
         try {
             const response = await apiFetch('/api/category-evaluations', {
@@ -91,6 +103,8 @@ export const TrackingService = {
         }
     },
 
+    // PUT /api/groups/:groupId/attendance: registra/actualiza la asistencia de un alumno en una fecha concreta
+    // (status: presente/ausente/tarde); usado al pasar lista
     syncAttendance: async (groupId: string, studentId: string, date: string, status: string) => {
         try {
             const response = await apiFetch(`/api/groups/${groupId}/attendance`, {
@@ -107,6 +121,7 @@ export const TrackingService = {
         }
     },
 
+    // POST /api/groups/:groupId/attendance/verify: marca como verificada/cerrada la lista de asistencia de una fecha
     verifyAttendance: async (groupId: string, date: string) => {
         try {
             const response = await apiFetch(`/api/groups/${groupId}/attendance/verify`, {
@@ -123,8 +138,11 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/evaluations: evaluaciones del club, filtrables por rango from/to o por mes,
+    // y opcionalmente por actividad/instructor; devuelve data.evaluations
     getClubEvaluations: async (clubId: string, month: number, from?: string, to?: string, activityId?: string, instructorId?: string) => {
         try {
+            // Si se da un rango de fechas se prioriza sobre el filtro por mes
             const base = from && to
                 ? `/api/clubs/${clubId}/evaluations?from=${from}&to=${to}`
                 : `/api/clubs/${clubId}/evaluations?month=${month}`;
@@ -139,6 +157,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/attendance: asistencia agregada del club, mismos filtros que getClubEvaluations; devuelve data.attendance
     getClubAttendance: async (clubId: string, month: number, from?: string, to?: string, activityId?: string, instructorId?: string) => {
         try {
             const base = from && to
@@ -155,6 +174,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/report/overview: resumen general de alumnos del club (filtrable por actividad/instructor); devuelve el objeto completo de la respuesta
     getClubStudentsOverview: async (clubId: string, activityId?: string, instructorId?: string) => {
         try {
             const extra = (activityId ? `?activityId=${activityId}` : '') + (instructorId ? `${activityId ? '&' : '?'}instructorId=${instructorId}` : '');
@@ -168,6 +188,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/report/roster-changes: altas/bajas de alumnos en un rango de fechas, filtrable por actividad/instructor
     getClubRosterChanges: async (clubId: string, from: string, to: string, activityId?: string, instructorId?: string) => {
         try {
             const extra = (activityId ? `&activityId=${activityId}` : '') + (instructorId ? `&instructorId=${instructorId}` : '');
@@ -181,6 +202,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/report/monthly-churn: tasa de abandono mensual del club, filtrable por actividad/instructor
     getClubMonthlyChurn: async (clubId: string, activityId?: string, instructorId?: string) => {
         try {
             const extra = (activityId ? `?activityId=${activityId}` : '') + (instructorId ? `${activityId ? '&' : '?'}instructorId=${instructorId}` : '');
@@ -194,6 +216,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/clubs/:clubId/report/gamification: estadísticas de gamificación del club (puntos, logros, participación, etc.)
     getClubGamificationStats: async (clubId: string) => {
         try {
             const response = await apiFetch(`/api/clubs/${clubId}/report/gamification`);
@@ -206,6 +229,7 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/groups/:groupId/attendance/history: historial completo de fechas de asistencia pasadas por lista en el grupo
     getGroupAttendanceHistory: async (groupId: string) => {
         try {
             const response = await apiFetch(`/api/groups/${groupId}/attendance/history`);
@@ -218,6 +242,8 @@ export const TrackingService = {
         }
     },
 
+    // GET /api/groups/:groupId/attendance/date/:date: registros de asistencia de esa fecha concreta,
+    // como mapa studentId -> 'present' | 'absent' | 'late' (data.records)
     getGroupAttendanceByDate: async (groupId: string, date: string): Promise<Record<string, 'present' | 'absent' | 'late'>> => {
         try {
             const response = await apiFetch(`/api/groups/${groupId}/attendance/date/${date}`);

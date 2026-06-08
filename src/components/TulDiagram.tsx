@@ -9,6 +9,10 @@ interface TulDiagramProps {
     color?: string;
 }
 
+// Dibuja una representacion simplificada (con barras de View) del trazado/diagrama que sigue un Tul
+// sobre el suelo durante su ejecucion. Como no disponemos de imagenes reales para cada diagrama, los
+// "tipos" mas comunes (cruz, I, T invertida, erudito) se aproximan combinando barras rectangulares;
+// cualquier otro tipo cae en un recuadro generico con la etiqueta "Diagrama"
 export const TulDiagram: React.FC<TulDiagramProps> = ({
     type = 'other',
     size = 200,
@@ -18,54 +22,52 @@ export const TulDiagram: React.FC<TulDiagramProps> = ({
     const { t: trans } = useTranslation();
     const resolvedColor = color || theme.colors.primary;
 
-    // Line thickness
+    // Grosor de las barras que forman el diagrama
     const t = 4;
     const half = size / 2;
 
     const renderPlus = () => (
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-            {/* Vertical */}
+            {/* Barra vertical */}
             <View style={{ position: 'absolute', width: t, height: size, backgroundColor: resolvedColor }} />
-            {/* Horizontal */}
+            {/* Barra horizontal */}
             <View style={{ position: 'absolute', width: size, height: t, backgroundColor: resolvedColor }} />
-            {/* Start text */}
+            {/* Marca de inicio del trazado */}
             <Text style={[styles.label, { bottom: 0 }]}>C</Text>
         </View>
     );
 
     const renderI = () => (
         <View style={{ width: size / 2, height: size, alignItems: 'center', justifyContent: 'center' }}>
-            {/* Top Bar */}
+            {/* Barra superior */}
             <View style={{ position: 'absolute', top: 0, width: size / 2, height: t, backgroundColor: resolvedColor }} />
-            {/* Vertical */}
+            {/* Barra vertical central */}
             <View style={{ position: 'absolute', width: t, height: size, backgroundColor: resolvedColor }} />
-            {/* Bottom Bar */}
+            {/* Barra inferior */}
             <View style={{ position: 'absolute', bottom: 0, width: size / 2, height: t, backgroundColor: resolvedColor }} />
         </View>
     );
 
     const renderInvertedT = () => (
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-            {/* Vertical (Half) */}
+            {/* Barra vertical (a media altura) */}
             <View style={{ position: 'absolute', bottom: 0, width: t, height: size / 2, backgroundColor: resolvedColor }} />
-            {/* Horizontal */}
+            {/* Barra horizontal inferior */}
             <View style={{ position: 'absolute', bottom: 0, width: size, height: t, backgroundColor: resolvedColor }} />
         </View>
     );
 
-    // Placeholder for Scholar/Complex
+    // Aproximacion del simbolo "Erudito" (士), usado por ejemplo en el Tul Yul-Gok: combina una barra
+    // superior, una vertical central, una barra intermedia y una inferior mas corta que la superior
     const renderScholar = () => (
         <View style={{ width: size / 1.5, height: size, alignItems: 'center', justifyContent: 'center' }}>
-            {/* Top Bar */}
+            {/* Barra superior */}
             <View style={{ position: 'absolute', top: 0, width: size / 1.5, height: t, backgroundColor: resolvedColor }} />
-            {/* Vertical */}
+            {/* Barra vertical central */}
             <View style={{ position: 'absolute', width: t, height: size, backgroundColor: resolvedColor }} />
-            {/* Middle Bar (Scholar symbol often has this) */}
+            {/* Barra intermedia (caracteristica del simbolo de erudito) */}
             <View style={{ position: 'absolute', width: size / 2, height: t, backgroundColor: resolvedColor }} />
-            {/* Bottom - Scholar often implies 'Man' shape or specific Chinese character. 
-                For Yul-Gok (Scholar), diagram is usually 'Scholar' (士). 
-                Top bar longer than bottom bar.
-             */}
+            {/* Barra inferior, mas corta que la superior para imitar la proporcion real del caracter */}
             <View style={{ position: 'absolute', bottom: 0, width: size / 2.5, height: t, backgroundColor: resolvedColor }} />
         </View>
     );

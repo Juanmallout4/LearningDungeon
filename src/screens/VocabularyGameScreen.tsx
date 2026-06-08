@@ -7,7 +7,7 @@ import { ClubService } from '../services/ClubService';
 import { VocabularyTerm } from '../types';
 import { useTranslation } from 'react-i18next';
 
-// Utility for shuffling
+// Aqui mezclamos un array al azar (algoritmo Fisher-Yates) sin mutar el original
 const shuffleArray = (array: any[]) => {
     const arr = [...array];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -20,35 +20,43 @@ const shuffleArray = (array: any[]) => {
 export const VocabularyGameScreen = ({ route }: any) => {
     const navigation = useNavigation<any>();
     const { user } = route.params || {};
+    // El tipo de actividad llega por navegacion; si no se especifica, asumimos Taekwondo ITF como modo por defecto
     const activityType = route.params?.activityType || 'taekwondo_itf';
 
     const { theme } = useTheme();
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Banco de terminos descargado del club; de aqui se generan las preguntas del juego
     const [vocabulary, setVocabulary] = useState<VocabularyTerm[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Pregunta actual: termino a adivinar y sus opciones (1 correcta + 3 distractoras) ya mezcladas
     const [currentTerm, setCurrentTerm] = useState<VocabularyTerm | null>(null);
     const [options, setOptions] = useState<string[]>([]);
+    // Respuesta elegida por el usuario (null = aun no ha respondido) y feedback visual derivado de si acerto
     const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
     const [multiplierInfo, setMultiplierInfo] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
+    // Filtro de tema seleccionado (null = todos los temas)
     const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
 
+    // Cargamos el vocabulario una sola vez al entrar a la pantalla
     useEffect(() => {
         loadVocabulary();
     }, []);
 
+    // Descarga el vocabulario del club del usuario (o el club global si no pertenece a ninguno) y arranca la primera pregunta
     const loadVocabulary = async () => {
         const GLOBAL_CLUB_ID = '00000000-0000-4000-a000-000000000000';
         const targetOrgId = user?.organizationId || GLOBAL_CLUB_ID;
 
         try {
-            // Belt-level filtering only makes sense for Taekwondo's rank-based vocabulary
+            // El filtrado por nivel de cinturon solo tiene sentido en el vocabulario de Taekwondo (organizado por rangos)
             const maxBelt = activityType === 'taekwondo_itf' ? (user?.rank || 0) : undefined;
             const data = await ClubService.getVocabulary(targetOrgId, maxBelt, activityType, 'text');
             setVocabulary(data);
+            // Necesitamos al menos 4 terminos para poder generar 1 correcto + 3 distractores
             if (data.length >= 4) {
                 generateQuestion(data);
             }
@@ -59,15 +67,18 @@ export const VocabularyGameScreen = ({ route }: any) => {
         }
     };
 
+    // Lista de temas unicos presentes en el vocabulario, usada para los chips de filtro (se recalcula solo si cambia 'vocabulary')
     const topics = useMemo(
         () => Array.from(new Set(vocabulary.map(v => v.topic).filter((t): t is string => !!t))),
         [vocabulary]
     );
+    // Subconjunto de vocabulario activo segun el tema elegido: si no hay tema seleccionado, se usa todo el banco
     const activePool = useMemo(
         () => selectedTopic ? vocabulary.filter(v => v.topic === selectedTopic) : vocabulary,
         [vocabulary, selectedTopic]
     );
 
+    // Cambia el tema activo y regenera la pregunta con el nuevo subconjunto (o vacia la pregunta si no hay suficientes terminos)
     const handleSelectTopic = (topic: string | null) => {
         setSelectedTopic(topic);
         const pool = topic ? vocabulary.filter(v => v.topic === topic) : vocabulary;
@@ -78,7 +89,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
         }
     };
 
-    // Builds a fresh shuffled set of options (1 correct + 3 distractors) for a given term
+    // Construye un nuevo conjunto de opciones mezclado (1 correcta + 3 distractoras tomadas al azar del resto del banco)
     const buildOptions = (term: VocabularyTerm, vocabPool: VocabularyTerm[]) => {
         const otherItems = vocabPool.filter(v => v.id !== term.id);
         const shuffledOthers = shuffleArray(otherItems);
@@ -86,15 +97,16 @@ export const VocabularyGameScreen = ({ route }: any) => {
         return shuffleArray([term.meaning, ...distractors]);
     };
 
+    // Genera una pregunta nueva: reinicia el estado de respuesta/feedback y elige al azar el termino correcto del pool dado
     const generateQuestion = (vocabPool: VocabularyTerm[]) => {
         if (vocabPool.length < 4) return;
 
-        // Always reset states
+        // Reseteamos siempre el estado de la pregunta anterior antes de mostrar la nueva
         setSelectedAnswer(null);
         setMultiplierInfo(null);
         setFeedback(null);
 
-        // Pick a random correct term and build its options
+        // Elegimos un termino correcto al azar y montamos sus opciones de respuesta
         const correctIndex = Math.floor(Math.random() * vocabPool.length);
         const correctItem = vocabPool[correctIndex];
 
@@ -102,7 +114,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
         setOptions(buildOptions(correctItem, vocabPool));
     };
 
-    // Re-asks the SAME term with re-shuffled options, so a wrong answer can be retried until correct
+    // Repite la MISMA pregunta con las opciones re-mezcladas, para que un fallo se pueda reintentar hasta acertar
     const retryQuestion = () => {
         if (!currentTerm) return;
         setSelectedAnswer(null);
@@ -110,8 +122,10 @@ export const VocabularyGameScreen = ({ route }: any) => {
         setOptions(buildOptions(currentTerm, activePool));
     };
 
+    // Procesa la respuesta elegida: marca el feedback, suma puntos al acertar (con multiplicador por racha) y avanza de pregunta
     const handleSelectOption = (meaning: string) => {
-        if (selectedAnswer !== null) return; // Prevent double clicks
+        if (selectedAnswer !== null) return; // Evita pulsaciones dobles una vez ya se ha respondido
+
         setSelectedAnswer(meaning);
 
         const isCorrect = !!currentTerm && meaning === currentTerm.meaning;
@@ -119,6 +133,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
 
         if (isCorrect) {
             if (user?.id) {
+                // El backend calcula los puntos ganados y la racha/multiplicador; mostramos ese resultado al usuario
                 ClubService.addGamePoints(user.id, 1).then(res => {
                     setMultiplierInfo(t('vocabulary.pointsEarned', {
                         added: res.added,
@@ -127,11 +142,12 @@ export const VocabularyGameScreen = ({ route }: any) => {
                     }));
                 }).catch(err => console.error('Failed to add points', err));
             }
-            // Correct answers move on to the next question automatically
+            // Si la respuesta es correcta, pasamos automaticamente a la siguiente pregunta tras una breve pausa
             setTimeout(() => generateQuestion(activePool), 1000);
         }
     };
 
+    // Mientras se descarga el vocabulario, solo mostramos un indicador de carga centrado
     if (isLoading) {
         return (
             <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -140,6 +156,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
         );
     }
 
+    // Hay vocabulario suficiente en general, pero el tema elegido no tiene los 4 terminos minimos: mostramos selector de temas + aviso
     if (activePool.length < 4 && vocabulary.length >= 4) {
         return (
             <View style={styles.container}>
@@ -181,6 +198,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
         );
     }
 
+    // No hay vocabulario suficiente en absoluto para jugar (menos de 4 terminos en todo el banco): pantalla vacia con boton de volver
     if (vocabulary.length < 4) {
         return (
             <View style={styles.container}>
@@ -202,6 +220,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
         );
     }
 
+    // Color de fondo que "destella" en verde/rojo segun el feedback de la ultima respuesta, y vuelve al fondo normal sin feedback
     const flashColor = feedback === 'correct'
         ? `${theme.colors.success}33`
         : feedback === 'incorrect'
@@ -250,10 +269,12 @@ export const VocabularyGameScreen = ({ route }: any) => {
                         
                         <View style={styles.optionsContainer}>
                             {options.map((option, idx) => {
+                                // Colores por defecto antes de responder
                                 let bgColor = theme.colors.surface;
                                 let borderColor = theme.colors.border;
                                 let textColor = theme.colors.text;
 
+                                // Una vez respondido: resaltamos en verde la opcion correcta y en rojo la elegida si fue erronea
                                 if (selectedAnswer) {
                                     if (option === currentTerm.meaning) {
                                         bgColor = `${theme.colors.success}20`;
@@ -279,6 +300,7 @@ export const VocabularyGameScreen = ({ route }: any) => {
                             })}
                         </View>
 
+                        {/* El bloque de feedback solo aparece tras responder; si fallo se ofrece reintentar la misma pregunta */}
                         {selectedAnswer && (
                             <View style={styles.feedbackContainer}>
                                 {feedback === 'correct' ? (

@@ -10,15 +10,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { HubSpotService } from '../services/HubSpotService';
 
 export const LoginScreen = () => {
+    // Campos del formulario de acceso
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    // Estado de carga mientras se espera la respuesta del servicio de autenticacion
     const [loading, setLoading] = useState(false);
+    // Mensaje de error a mostrar al usuario (validacion local o respuesta del backend)
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const navigation = useNavigation<NativeStackNavigationProp<any>>();
     const { theme, toggleTheme } = useTheme();
     const { t, i18n } = useTranslation();
     const styles = createStyles(theme);
 
+    // Rota ciclicamente entre los idiomas soportados, calculando el siguiente a partir del idioma actual de i18n
     const toggleLanguage = () => {
         const langs = ['es', 'en', 'fr', 'de', 'it', 'pt'];
         const currentIndex = langs.indexOf(i18n.language.split('-')[0]);
@@ -27,6 +31,7 @@ export const LoginScreen = () => {
     };
 
     const handleLogin = async () => {
+        // Validacion basica de campos obligatorios antes de llamar al servicio
         if (!email || !password) {
             setErrorMessage(t('login.errorEmpty', { defaultValue: 'Email and password are required.' }));
             return;
@@ -36,15 +41,14 @@ export const LoginScreen = () => {
         setLoading(true);
         try {
             const user = await AuthService.login(email, password);
-            
-            // # HubSpot Identification
+
+            // Identificamos al usuario en HubSpot para vincular su actividad con el CRM de marketing
             HubSpotService.identify(user.email, {
                 firstname: user.name,
                 lastname: user.surname
             });
 
-            // Navigate to Home and pass user param to context or params
-            // For simplicity in this v1, passing via params
+            // Sustituimos la pantalla de login por Home (sin permitir volver atras) y pasamos el usuario por parametros
             navigation.replace('Home', { user });
         } catch (error: any) {
             const errorMsg = error.message || t('login.errorLogin');
@@ -54,6 +58,8 @@ export const LoginScreen = () => {
         }
     };
 
+    // En web permitimos enviar el formulario pulsando Enter; el listener se reengancha cuando cambian email/password
+    // para que handleLogin siempre vea los valores actuales (evita closures obsoletas)
     useEffect(() => {
         if (Platform.OS === 'web') {
             const handleKeyDown = (e: KeyboardEvent) => {
@@ -70,6 +76,7 @@ export const LoginScreen = () => {
 
     return (
         <View style={styles.container}>
+            {/* Selectores rapidos de idioma y tema, accesibles antes de iniciar sesion */}
             <View style={styles.topBar}>
                 <TouchableOpacity style={styles.iconButton} onPress={toggleLanguage}>
                     <Text style={styles.languageText}>{i18n.language.split('-')[0].toUpperCase()}</Text>
@@ -109,6 +116,7 @@ export const LoginScreen = () => {
                     onSubmitEditing={handleLogin}
                 />
 
+                {/* El bloque de error solo se renderiza cuando hay un mensaje activo (validacion o fallo del login) */}
                 {errorMessage ? (
                     <Text style={styles.errorText}>{errorMessage}</Text>
                 ) : null}
@@ -136,7 +144,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         backgroundColor: theme.colors.background,
         padding: theme.spacing.l,
         justifyContent: 'center',
-        paddingBottom: '10%', // Optical centering (lifts the form slightly up so it doesn't feel heavy on the bottom)
+        paddingBottom: '10%', // Centrado optico: sube ligeramente el formulario para que no se vea descompensado hacia abajo
     },
     topBar: {
         position: 'absolute',

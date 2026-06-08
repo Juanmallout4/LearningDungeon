@@ -17,16 +17,17 @@ export const AdminSupportScreen = () => {
     const [superadmins, setSuperadmins] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Filters
+    // Estado de los filtros y orden del listado de tickets (prioridad, estado, asignación, orden por id)
     const [filterPriority, setFilterPriority] = useState<string>('all');
     const [filterStatus, setFilterStatus] = useState<string>('open');
     const [filterOnlyMe, setFilterOnlyMe] = useState<boolean>(false);
     const [sortIdOrder, setSortIdOrder] = useState<'desc' | 'asc'>('desc');
     const [sortByPriority, setSortByPriority] = useState<boolean>(false);
 
+    // Aqui se define la lista de apps disponibles para etiquetar un ticket
     const apps = ['Aim Education', 'Learning Dungeon', 'Aim Training', 'Aim Brickslab', 'Aim Artemis', 'Aim Eventos'];
 
-    // Tab and Creation State
+    // Estado de la pestaña activa y de los campos del formulario de creación de ticket
     const [activeTab, setActiveTab] = useState<'list' | 'create' | 'global'>('list');
     const [subject, setSubject] = useState('');
     const [description, setDescription] = useState('');
@@ -34,7 +35,7 @@ export const AdminSupportScreen = () => {
     const [userId, setUserId] = useState<string | null>(null);
     const [syncing, setSyncing] = useState(false);
 
-    // Modal Management
+    // Estado del modal de detalle del ticket: ticket seleccionado, respuesta del dev y campos editables de gestión
     const [selectedTicket, setSelectedTicket] = useState<any>(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [devResponse, setDevResponse] = useState('');
@@ -44,6 +45,8 @@ export const AdminSupportScreen = () => {
     const [ticketAppLabels, setTicketAppLabels] = useState<string[]>(['Learning Dungeon']);
     const [isUpdating, setIsUpdating] = useState(false);
 
+    // Al montar la pantalla cargamos los tickets, la lista de superadmins (para asignar)
+    // y el usuario actual (para poder filtrar "solo mis tareas")
     useEffect(() => {
         fetchTickets();
         fetchSuperadmins();
@@ -52,6 +55,7 @@ export const AdminSupportScreen = () => {
         });
     }, []);
 
+    // Trae la lista de superadmins desde la API para poder asignarles tickets
     const fetchSuperadmins = async () => {
         try {
             const res = await apiFetch('/api/admin/superadmins');
@@ -62,6 +66,7 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Trae el listado completo de tickets de soporte y lo guarda en el estado
     const fetchTickets = async () => {
         setLoading(true);
         try {
@@ -75,11 +80,14 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Abre el modal de detalle de un ticket y precarga sus campos editables
+    // (respuesta, prioridad, fecha formateada a DD-MM-YYYY, asignado y etiquetas de app)
     const handleOpenTicket = (ticket: any) => {
         setSelectedTicket(ticket);
         setDevResponse(ticket.dev_response || '');
         setTicketPriority(ticket.priority || 'low');
 
+        // Convierte la fecha ISO que llega del backend al formato DD-MM-YYYY que usa el input
         let formattedDate = '';
         if (ticket.due_date) {
             const d = new Date(ticket.due_date);
@@ -91,20 +99,22 @@ export const AdminSupportScreen = () => {
         setTicketDueDate(formattedDate);
 
         setTicketAssignedId(ticket.assigned_to || '');
-        // Handle both old string format and new array format
+        // Soporta tanto el formato antiguo (string) como el nuevo (array) de app_label
         const labels = Array.isArray(ticket.app_label) ? ticket.app_label : (ticket.app_label ? [ticket.app_label] : ['Learning Dungeon']);
         setTicketAppLabels(labels);
         setShowDetailModal(true);
     };
 
+    // Envía al backend los cambios de gestión interna del ticket (estado, respuesta, prioridad,
+    // fecha límite, encargado y apps asociadas). Si se le pasa newStatus, fuerza ese cambio de estado.
     const updateTicketDetails = async (newStatus?: string) => {
         if (!selectedTicket) return;
 
+        // Reconvierte la fecha del input (DD-MM-YYYY) al formato YYYY-MM-DD que espera el backend
         let finalDueDate = null;
         if (ticketDueDate) {
             const parts = ticketDueDate.split('-');
             if (parts.length === 3) {
-                // DD-MM-YYYY to YYYY-MM-DD for backend
                 finalDueDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
             }
         }
@@ -118,6 +128,7 @@ export const AdminSupportScreen = () => {
             ticketAppLabels
         });
 
+        // En web usamos window.alert porque Alert.alert de RN no funciona bien en navegador
         const showFeedback = (title: string, msg: string) => {
             if (Platform.OS === 'web') {
                 window.alert(`${title}: ${msg}`);
@@ -156,6 +167,8 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Crea un nuevo ticket de soporte con el asunto y descripción del formulario,
+    // y al terminar limpia los campos y vuelve a la pestaña de listado
     const submitSupportTicket = async () => {
         if (!subject || !description) {
             Alert.alert('Error', 'Por favor, rellena todos los campos.');
@@ -185,6 +198,8 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Lanza la sincronización del contenido del Club Global (vocabulario, jefes y mercado)
+    // copiando los datos desde el club de referencia "Aim Education"
     const handleGlobalSync = async () => {
         setSyncing(true);
         try {
@@ -210,6 +225,7 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Aqui se asigna el color del badge según el estado del ticket (abierto/resuelto/cerrado)
     const getStatusColor = (status: string) => {
         switch (status.toLowerCase()) {
             case 'resolved': return theme.colors.success;
@@ -218,15 +234,20 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Aqui se asigna el color del badge según la prioridad del ticket (alta/media/baja)
     const getPriorityColor = (priority: string) => {
         switch (priority?.toLowerCase()) {
             case 'high': return theme.colors.error;
-            case 'medium': return '#FFD700'; // Yellowish / Gold
-            case 'low': default: return '#4CAF50'; // Greenish
+            case 'medium': return '#FFD700'; // Amarillo / dorado
+            case 'low': default: return '#4CAF50'; // Verde
         }
     };
 
+    // Genera un resumen en texto plano de los tickets visibles (aplicando los mismos
+    // filtros y orden que la lista) y lo copia al portapapeles para compartirlo fácilmente
     const copyTicketsToClipboard = async () => {
+        // Replica el filtrado y orden visible en la lista: filtra por prioridad, estado y "solo mías",
+        // y luego ordena primero por peso de prioridad (si está activo) y después por id
         const filtered = tickets
             .filter(t =>
                 (filterPriority === 'all' || t.priority === filterPriority) &&
@@ -248,6 +269,7 @@ export const AdminSupportScreen = () => {
             return;
         }
 
+        // Construye el bloque de texto plano que se copiará, ticket a ticket, con sus datos clave
         let text = `REPORTE DE TICKETS - ${new Date().toLocaleDateString()}\n`;
         text += `Filtros: Estado: ${filterStatus}, Prioridad: ${filterPriority}\n`;
         text += `--------------------------------------------------\n\n`;
@@ -279,7 +301,11 @@ export const AdminSupportScreen = () => {
         }
     };
 
+    // Genera un PDF (vía expo-print en móvil, o impresión del navegador en web) con los
+    // tickets que cumplen los filtros activos, formateados como tarjetas con sus metadatos
     const exportFilteredTickets = async () => {
+        // Mismo filtrado y orden que en la lista y en copyTicketsToClipboard, para que el PDF
+        // refleje exactamente lo que el admin está viendo en pantalla
         const filtered = tickets
             .filter(t =>
                 (filterPriority === 'all' || t.priority === filterPriority) &&
@@ -301,6 +327,7 @@ export const AdminSupportScreen = () => {
             return;
         }
 
+        // Plantilla HTML con estilos inline que se renderiza a PDF / impresión
         const html = `
         <html>
         <head>
@@ -388,8 +415,9 @@ export const AdminSupportScreen = () => {
         `;
 
         if (Platform.OS === 'web') {
-            // THE ULTIMATE CLEAN PRINT TECHNIQUE FOR WEB
-            // 1. Create a style that hides EVERYTHING when printing
+            // Truco para imprimir limpio en web: ocultamos toda la app y solo mostramos
+            // un contenedor temporal con el HTML del reporte durante la impresión
+            // 1. Creamos un estilo que oculta TODO el contenido al imprimir
             const style = document.createElement('style');
             style.id = 'print-isolation-style';
             style.innerHTML = `
@@ -400,16 +428,16 @@ export const AdminSupportScreen = () => {
             `;
             document.head.appendChild(style);
 
-            // 2. Create the hidden print container
+            // 2. Creamos el contenedor de impresión (oculto hasta que se imprime)
             const printRoot = document.createElement('div');
             printRoot.id = 'support-print-root';
             printRoot.innerHTML = html;
             document.body.appendChild(printRoot);
 
-            // 3. Print
+            // 3. Lanzamos la impresión del navegador
             window.print();
 
-            // 4. Cleanup
+            // 4. Limpiamos el DOM tras la impresión para no dejar nodos residuales
             setTimeout(() => {
                 document.getElementById('print-isolation-style')?.remove();
                 document.getElementById('support-print-root')?.remove();
@@ -449,7 +477,7 @@ export const AdminSupportScreen = () => {
                 <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginTop: 50 }} />
             ) : activeTab === 'list' ? (
                 <View style={{ flex: 1 }}>
-                    {/* Filters Bar */}
+                    {/* Aqui se configura la barra de filtros y acciones (prioridad, estado, orden, exportar/copiar) */}
                     <View style={styles.filterBar}>
                         <View style={styles.filterWrap}>
                             <View style={styles.filterGroup}>
@@ -533,6 +561,7 @@ export const AdminSupportScreen = () => {
                         </View>
                     </View>
 
+                    {/* Lista principal: aplicamos los filtros activos y el orden elegido directamente sobre los datos */}
                     <FlatList
                         data={tickets
                             .filter(t =>
@@ -547,7 +576,7 @@ export const AdminSupportScreen = () => {
                                     const weightB = weights[b.priority?.toLowerCase()] || 0;
                                     if (weightA !== weightB) return weightB - weightA;
                                 }
-                                // Second-level sort by ID
+                                // Criterio de desempate / orden secundario: por ID ascendente o descendente
                                 return sortIdOrder === 'desc' ? b.id - a.id : a.id - b.id;
                             })
                         }
@@ -559,7 +588,7 @@ export const AdminSupportScreen = () => {
                                 <View style={styles.ticketHeader}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
                                         <Text style={styles.ticketId}>#{item.id}</Text>
-                                        {/* Flatten and filter invalid data for robust badge rendering */}
+                                        {/* Aplanamos y normalizamos app_label (puede venir como string suelto, array o array anidado) para pintar los badges sin romper */}
                                         {(Array.isArray(item.app_label) ? (item.app_label.flat(Infinity) as string[]) : [item.app_label || 'Learning Dungeon']).map((label: string) => (
                                             <View key={label} style={[styles.appBadge, { backgroundColor: theme.colors.primary + '20', marginRight: 4 }]}>
                                                 <Text style={styles.appBadgeText}>{label}</Text>
@@ -787,7 +816,7 @@ export const AdminSupportScreen = () => {
                                             ]}
                                             onPress={() => {
                                                 if (isSelected) {
-                                                    // Don't allow zero apps if possible, or just toggle
+                                                    // Alterna la selección: si ya estaba marcada la quitamos del array de etiquetas
                                                     setTicketAppLabels(prev => prev.filter(l => l !== app));
                                                 } else {
                                                     setTicketAppLabels(prev => [...prev, app]);
@@ -929,7 +958,7 @@ const createStyles = (theme: any) => StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     },
-    // Global Club Styles
+    // Estilos globales relacionados con clubes
     globalCard: {
         backgroundColor: theme.colors.surface,
         borderRadius: 12,
@@ -990,7 +1019,7 @@ const createStyles = (theme: any) => StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 13,
     },
-    // Modal Styles
+    // Estilos de los modales
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1048,7 +1077,7 @@ const createStyles = (theme: any) => StyleSheet.create({
         color: '#FFF',
         fontWeight: 'bold',
     },
-    // New Styles for Upgraded Support
+    // Estilos nuevos para la version mejorada del panel de soporte
     filterBar: {
         backgroundColor: theme.colors.surface,
         paddingVertical: 12,

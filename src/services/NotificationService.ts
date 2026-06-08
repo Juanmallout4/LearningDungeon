@@ -3,7 +3,8 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Set default behavior for incoming notifications when app is foregrounded
+// Configura el comportamiento por defecto de las notificaciones entrantes cuando la app está en primer plano
+// (mostrar alerta, sonido y badge)
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowAlert: true,
@@ -15,10 +16,8 @@ Notifications.setNotificationHandler({
 });
 
 export const NotificationService = {
-    /**
-     * Registers for Expo push notifications.
-     * Needs to be called usually on app mount.
-     */
+    // Solicita permisos y registra el dispositivo para notificaciones push de Expo (normalmente al montar la app).
+    // Crea el canal "default" en Android, pide permisos si faltan y devuelve el token de Expo Push (o undefined si no aplica)
     registerForPushNotificationsAsync: async (): Promise<string | undefined> => {
         let token;
 
@@ -44,8 +43,8 @@ export const NotificationService = {
                 return undefined;
             }
 
-            // In Expo Go SDK 53+, push notifications (remote) are completely removed.
-            // We bypass the token generation entirely to prevent Expo Go from throwing the uncaught error.
+            // En Expo Go SDK 53+ las notificaciones push remotas se eliminaron por completo.
+            // Evitamos generar el token para que Expo Go no lance un error no controlado.
             if (Constants.appOwnership === 'expo') {
                 console.log("Running in Expo Go: Remote Push Notifications are disabled. Local notifications will still work.");
             } else {
@@ -68,10 +67,8 @@ export const NotificationService = {
         return token;
     },
 
-    /**
-     * Schedule a local push notification
-     * Useful for class reminders, streak goals, etc.
-     */
+    // Programa una notificación local que se dispara tras "triggerSeconds" segundos
+    // (recordatorios de clase, rachas, etc., sin pasar por el backend)
     scheduleLocalNotification: async (title: string, body: string, triggerSeconds: number = 2) => {
         await Notifications.scheduleNotificationAsync({
             content: {
@@ -83,9 +80,8 @@ export const NotificationService = {
         });
     },
 
-    /**
-     * Send a notification to the user right now (simulating API usage)
-     */
+    // Envía una notificación push de prueba directamente al endpoint de Expo (https://exp.host/.../push/send)
+    // usando el token del destinatario; pensado para pruebas manuales, no para flujo de producción
     sendPushNotification: async (expoPushToken: string, title: string, body: string) => {
         const message = {
             to: expoPushToken,

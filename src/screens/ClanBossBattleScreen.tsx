@@ -33,14 +33,14 @@ export const ClanBossBattleScreen = () => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [boss, setBoss] = useState<any>(null);
     const [vocabulary, setVocabulary] = useState<VocabularyTerm[]>([]);
-    
-    // Game States
+
+    // Aqui controlamos el ciclo de vida de la pantalla de combate: cargando datos, luchando, o derrotado, y el contador de aciertos
     const [isLoading, setIsLoading] = useState(true);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isDead, setIsDead] = useState(false);
     const [correctHits, setCorrectHits] = useState(0);
 
-    // Survival Stats (Local copy representing current state)
+    // Copia local de las estadísticas de combate del jugador (vida, maná y clase) que se va modificando durante la partida
     const [stats, setStats] = useState({
         hp: 100,
         maxHp: 100,
@@ -48,21 +48,24 @@ export const ClanBossBattleScreen = () => {
         maxMana: 50,
         rpgClass: 'unassigned'
     });
-    
+
+    // Aura del Monje activa (curación propia o grupal), puntos de curación añadidos al equipo y bonus de combate del equipo equipado
     const [monkAura, setMonkAura] = useState<'personal' | 'grupal' | null>(null);
     const [addedTeamHeal, setAddedTeamHeal] = useState(0);
     const [inventoryBonus, setInventoryBonus] = useState({ hpBoost: 0, damageMultiplier: 1, healBoost: 0 });
 
+    // Refs espejo de los contadores de combate (aciertos, curación y maná consumido): evitan el problema de "stale closure"
+    // dentro de los timers/callbacks del juego, ya que los setState son asíncronos y los timers usan valores capturados
     const hitsRef = useRef(0);
     const healRef = useRef(0);
     const manaConsumedRef = useRef(0);
-    
-    // Quick question state
+
+    // Estado de la pregunta de vocabulario actual: término mostrado, opciones de respuesta y cuál es la correcta
     const [currentTerm, setCurrentTerm] = useState<VocabularyTerm | null>(null);
     const [options, setOptions] = useState<string[]>([]);
     const [correctAnswer, setCorrectAnswer] = useState<string | null>(null);
-    
-    // Animations
+
+    // Valores animados (Animated.Value) que controlan las sacudidas del jefe, las barras de HP/maná y los destellos de pantalla
     const bossShake = useRef(new Animated.Value(0)).current;
     const bossLunge = useRef(new Animated.Value(0)).current;
     const hpAnimation = useRef(new Animated.Value(1)).current;
@@ -73,9 +76,12 @@ export const ClanBossBattleScreen = () => {
     
     const socketRef = useRef<Socket | null>(null);
     const attackTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Refs espejo de isPlaying/isDead: los timers de ataque del jefe necesitan leer el valor más reciente
+    // sin re-suscribirse, así que no podemos depender únicamente del estado de React dentro de scheduleNextAttack
     const isPlayingRef = useRef(false);
     const isDeadRef = useRef(false);
 
+    // Al entrar en la pantalla cargamos jefe, vocabulario y stats; al salir cerramos el socket y cancelamos el temporizador de ataques
     useEffect(() => {
         loadBattleData();
         return () => {
@@ -84,6 +90,8 @@ export const ClanBossBattleScreen = () => {
         };
     }, []);
 
+    // Carga inicial de la batalla: trae en paralelo el jefe activo del clan/club, el vocabulario de preguntas según el rango/actividad
+    // del usuario y su inventario; calcula stats de combate (HP/maná) y bonus de equipo, y abre el socket para recibir HP del jefe en vivo
     const loadBattleData = async () => {
         setIsLoading(true);
         try {
@@ -121,7 +129,9 @@ export const ClanBossBattleScreen = () => {
                     }
                 }
                 
-                // Fetch RPG Inventory
+                // Calculamos el bono de combate sumando las estadísticas (combatStats) de cada objeto que el jugador tiene EQUIPADO:
+                // hp y heal se suman, damageMultiplier se multiplica acumulativamente (parte de 1). Al final aplicamos el bono de
+                // HP a las estadísticas locales (sube hp y maxHp) para reflejar el equipo en la barra de vida de la batalla
                 try {
                     const invRes = await apiFetch(`/api/users/${currentUser.id}/inventory`);
                     if (invRes.ok) {
@@ -138,11 +148,14 @@ export const ClanBossBattleScreen = () => {
                             }
                         });
                         setInventoryBonus({ hpBoost: hp, damageMultiplier: dmg, healBoost: heal });
-                        // Update stats with inventory HP
+                        // Aplicamos el bono de HP del equipo tanto a la vida actual como al máximo
                         setStats(prev => ({ ...prev, hp: prev.hp + hp, maxHp: prev.maxHp + hp }));
                     }
                 } catch(e) {}
-                
+
+                // Abrimos (o reutilizamos) el socket autenticado, nos unimos a la sala del clan para recibir eventos de batalla,
+                // y escuchamos 'boss_hp_updated': si el jefe resucitó (respawned) reseteamos su HP/nivel directamente,
+                // si no, animamos la barra de HP hacia el nuevo valor recibido del servidor
                 if (!socketRef.current) {
                     const token = await getToken();
                     const authOpts = { auth: { token } };
@@ -165,6 +178,7 @@ export const ClanBossBattleScreen = () => {
         }
     };
 
+    // Anima una sacudida rápida del jefe (izquierda-derecha-izquierda-centro) cuando el jugador acierta y le golpea
     const triggerBossHitAnimation = () => {
         Animated.sequence([
             Animated.timing(bossShake, { toValue: 10, duration: 50, useNativeDriver: true }),
@@ -174,6 +188,7 @@ export const ClanBossBattleScreen = () => {
         ]).start();
     };
 
+    // Anima un "embiste" del jefe hacia el jugador (avanza y vuelve) cuando ataca, dando sensación de impacto
     const triggerBossAttackAnimation = () => {
         Animated.sequence([
             Animated.spring(bossLunge, { toValue: 30, speed: 20, bounciness: 0, useNativeDriver: true }),
@@ -181,6 +196,7 @@ export const ClanBossBattleScreen = () => {
         ]).start();
     };
 
+    // Destello rojo de pantalla completa: feedback visual de que el jugador ha recibido daño
     const triggerDamageFlash = () => {
         Animated.sequence([
             Animated.timing(screenFlash, { toValue: 1, duration: 100, useNativeDriver: false }),
@@ -188,6 +204,7 @@ export const ClanBossBattleScreen = () => {
         ]).start();
     };
 
+    // Destello verde de pantalla completa: feedback visual de que el jugador ha respondido bien y golpeado al jefe
     const triggerHitFlash = () => {
         Animated.sequence([
             Animated.timing(screenFlashGreen, { toValue: 1, duration: 100, useNativeDriver: false }),
@@ -195,6 +212,7 @@ export const ClanBossBattleScreen = () => {
         ]).start();
     };
 
+    // Anima suavemente la barra de vida del jefe hacia la nueva proporción currentHp/totalHp (nunca por debajo de 0)
     const updateBossHpBar = (newCurrentHp: number, totalHp: number) => {
         Animated.timing(hpAnimation, {
             toValue: Math.max(newCurrentHp / totalHp, 0),
@@ -204,6 +222,7 @@ export const ClanBossBattleScreen = () => {
         }).start();
     };
 
+    // Anima la barra de vida del jugador hacia su nueva proporción HP/maxHP
     const updatePlayerHpBar = (newCurrentHp: number, totalHp: number) => {
         Animated.timing(playerHpAnim, {
             toValue: Math.max(newCurrentHp / totalHp, 0),
@@ -212,6 +231,7 @@ export const ClanBossBattleScreen = () => {
         }).start();
     };
 
+    // Anima la barra de maná del jugador (solo visible para la clase Mago) hacia su nueva proporción mana/maxMana
     const updateManaBar = (newMana: number, totalMana: number) => {
         Animated.timing(manaAnim, {
             toValue: Math.max(newMana / totalMana, 0),
@@ -228,6 +248,8 @@ export const ClanBossBattleScreen = () => {
         updateManaBar(stats.mana, stats.maxMana);
     }, [stats.mana, stats.maxMana]);
 
+    // El jugador elige su clase RPG (Guerrero/Mago/Druida/Monje): la guarda en el backend, actualiza la sesión local
+    // (AsyncStorage) y recarga toda la batalla para que el servidor inicialice las estadísticas según la nueva clase
     const pickClass = async (selectedClass: RPGClass) => {
         if (!user) return;
         try {
@@ -240,13 +262,16 @@ export const ClanBossBattleScreen = () => {
                 const updatedUser = { ...user, rpgClass: selectedClass };
                 await AsyncStorage.setItem('@Learning Dungeon_user', JSON.stringify(updatedUser));
                 setUser(updatedUser);
-                loadBattleData(); // Reload to get newly initialized stats
+                loadBattleData(); // Recargamos para obtener las estadisticas RPG recien inicializadas
             }
         } catch (e) {
             console.error('Error setting class', e);
         }
     };
 
+    // Genera una nueva pregunta de combate: elige un término de vocabulario al azar, decide la respuesta correcta según
+    // su tipo de contenido (si es imagen, se pregunta el nombre/término; si es texto, se pregunta el significado),
+    // y arma 3 distractores del mismo tipo de contenido (o del pool completo si no hay suficientes) mezclados con la correcta
     const nextQuestion = () => {
         if (vocabulary.length < 4) return;
         const target = vocabulary[Math.floor(Math.random() * vocabulary.length)];
@@ -254,11 +279,11 @@ export const ClanBossBattleScreen = () => {
         const isImage = target.contentType === 'image';
         const answer = isImage ? target.term : target.meaning;
         setCorrectAnswer(answer);
-        // Distractors come from entries of the same content type, so image questions
-        // get technique-name options and text questions get meaning options
+        // Los distractores salen de entradas del mismo tipo de contenido: las preguntas de imagen
+        // ofrecen nombres de técnica como opciones, y las de texto ofrecen significados
         let samePool = vocabulary.filter(v => (v.contentType === 'image') === isImage && v.id !== target.id);
         if (samePool.length < 3) {
-            // Not enough same-type entries to build distractors — fall back to the full pool
+            // No hay suficientes entradas del mismo tipo para formar distractores — usamos el pool completo como respaldo
             samePool = vocabulary.filter(v => v.id !== target.id);
         }
         const wrongs = samePool.sort(() => 0.5 - Math.random()).slice(0, 3);
@@ -266,6 +291,8 @@ export const ClanBossBattleScreen = () => {
         setOptions(choices);
     };
 
+    // Arranca la partida: comprueba que haya vocabulario suficiente y que el jugador esté con vida, reinicia
+    // todos los contadores de combate (aciertos, maná consumido, curación) y lanza la primera pregunta y el ciclo de ataques del jefe
     const startGame = () => {
         if (vocabulary.length < 4) {
             Alert.alert(t('battle.trainingLocked'), t('battle.lockedDesc'));
@@ -280,7 +307,7 @@ export const ClanBossBattleScreen = () => {
             return;
         }
         
-        // Reset local combat state
+        // Reiniciamos el estado de combate local (tanto el state como sus refs espejo) antes de empezar
         setCorrectHits(0);
         hitsRef.current = 0;
         manaConsumedRef.current = 0;
@@ -291,19 +318,21 @@ export const ClanBossBattleScreen = () => {
         setIsPlaying(true);
         isPlayingRef.current = true;
         nextQuestion();
-        
-        // Start random enemy attacks
+
+        // Arrancamos el ciclo de ataques aleatorios del jefe
         scheduleNextAttack(true);
     };
 
+    // Programa el siguiente ataque del jefe en un intervalo aleatorio entre attackIntervalMin/Max (con valores por defecto).
+    // SIEMPRE consultamos los refs (isPlayingRef/isDeadRef) en vez del state directamente, porque el setTimeout
+    // captura el valor de las variables en el momento de crearse y el estado de React podría haber cambiado para entonces
     const scheduleNextAttack = (isFirstCall = false) => {
-        // ALWAYS use refs for timer logic to avoid state capture issues
         if ((!isPlayingRef.current && !isFirstCall) || isDeadRef.current || !boss) return;
-        
+
         const minInt = boss.attackIntervalMin || 1000;
         const maxInt = boss.attackIntervalMax || 10000;
         const interval = Math.floor(Math.random() * (maxInt - minInt + 1)) + minInt;
-        
+
         attackTimerRef.current = setTimeout(() => {
             if (isPlayingRef.current && !isDeadRef.current) {
                 try {
@@ -317,21 +346,25 @@ export const ClanBossBattleScreen = () => {
         }, interval);
     };
 
+    // Calcula el daño del ataque del jefe: una base aleatoria entre su daño mínimo y máximo, más un bonus
+    // proporcional a su nivel (bossLevel * 2), y lo aplica al jugador disparando la animación de embiste
     const performBossAttack = () => {
         if (!boss) return;
-        
-        // Random damage between min and max
+
         const minDmg = boss.minDamage || boss.min_damage || 5;
         const maxDmg = boss.maxDamage || boss.max_damage || minDmg + 10;
         const levelBonus = (boss.bossLevel || boss.boss_level || 1) * 2;
-        
+
         const randomBase = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
         const totalDamage = randomBase + levelBonus;
-        
+
         triggerBossAttackAnimation();
         takeDamage(totalDamage);
     };
 
+    // Resta vida al jugador (sin bajar de 0), dispara el destello de daño y, si la vida llega a 0,
+    // marca al jugador como muerto (state + ref) y termina la partida forzando hp=0 explícitamente
+    // para evitar condiciones de carrera con el valor de stats.hp todavía no actualizado
     const takeDamage = (amount: number) => {
         triggerDamageFlash();
         let isNowDead = false;
@@ -346,33 +379,36 @@ export const ClanBossBattleScreen = () => {
         });
 
         if (isNowDead) {
-            // Force 0 explicitly to avoid race conditions with stats.hp
             endGame(0);
         }
     };
 
+    // Red de seguridad: si el estado isDead cambia a true mientras seguimos "jugando", forzamos el cierre de la partida
     useEffect(() => {
         if (isDead && isPlayingRef.current) {
             endGame();
         }
     }, [isDead]);
 
+    // Procesa la respuesta del jugador a la pregunta de combate: aplica efectos según su clase RPG
+    // (consumo/recarga de maná para Magos, curación pasiva para Monjes según su aura) y decide si golpea al jefe o recibe daño
     const handleAnswer = (selected: string) => {
-        if (isDead || !isPlaying) return; // #51 Fix: Block attacks if muerto or game over
-        
+        if (isDead || !isPlaying) return; // Bloquea respuestas si el jugador ya está muerto o la partida terminó
+
         if (selected === correctAnswer) {
             hitsRef.current += 1;
             setCorrectHits(hitsRef.current);
             triggerBossHitAnimation();
             triggerHitFlash(); // # Green flash feedback
 
-            // Mana consumption for mages
+            // Cada acierto consume 5 puntos de maná si la clase es Mago (su mecánica de recurso especial)
             if (stats.rpgClass === 'Mago' || stats.rpgClass === 'Mage') {
                 manaConsumedRef.current += 5;
                 setStats(prev => ({ ...prev, mana: Math.max(0, prev.mana - 5) }));
             }
 
-            // Passive healing logic for Monks
+            // Curación pasiva del Monje según el aura elegida antes de empezar: 'personal' se cura a sí mismo (+15 HP por acierto),
+            // 'grupal' acumula curación para repartir entre el equipo al terminar (healRef se envía al backend en endGame)
             const isLocalizedHealer = stats.rpgClass === 'Monje' || stats.rpgClass === 'Monk';
             if (isLocalizedHealer) {
                 if (monkAura === 'personal') {
@@ -383,13 +419,14 @@ export const ClanBossBattleScreen = () => {
                 }
             }
 
-            // Local Prediction UI
+            // Predicción visual local del HP del jefe: restamos 5 de forma optimista para que la barra reaccione
+            // al instante, aunque el valor real (autoritativo) llegará después por el evento de socket 'boss_hp_updated'
             if (boss) {
-                const newHp = Math.max(0, boss.currentHp - 5); // Just a visual guess until server updates
+                const newHp = Math.max(0, boss.currentHp - 5);
                 setBoss({ ...boss, currentHp: newHp });
                 updateBossHpBar(newHp, boss.totalHp);
 
-                // #48 Fix: Boss death trigger
+                // Si nuestra predicción local indica que el jefe ha muerto, terminamos la partida ya (victoria)
                 if (newHp === 0) {
                     endGame();
                     return;
@@ -398,8 +435,8 @@ export const ClanBossBattleScreen = () => {
 
             nextQuestion();
         } else {
-            // Wrong answer: Penalized with Boss Attack immediately + Mana restored?
-            // "Recargar mana respondiendo preguntas" -> On success, we should restore mana for Mages!
+            // Respuesta incorrecta: el jugador recibe daño inmediato (10 HP) como penalización; si es Mago,
+            // además recupera 10 de maná (mecanismo de "recargar maná respondiendo", incluso fallando)
             if (stats.rpgClass === 'Mago' || stats.rpgClass === 'Mage') {
                 setStats(prev => ({ ...prev, mana: Math.min(prev.maxMana, prev.mana + 10) }));
             }
@@ -408,6 +445,9 @@ export const ClanBossBattleScreen = () => {
         }
     };
 
+    // Cierra la partida: detiene el ciclo de ataques, envía al backend el resultado del combate
+    // (aciertos, maná consumido, curación de equipo aportada y HP final) para que calcule el daño real al jefe,
+    // las recompensas y el botín, y muestra al jugador un resumen (victoria/derrota/retirada) con el botín obtenido
     const endGame = async (explicitHp?: number) => {
         setIsPlaying(false);
         isPlayingRef.current = false;
@@ -438,11 +478,15 @@ export const ClanBossBattleScreen = () => {
                 setBoss({ ...boss, currentHp: data.currentHp, boss_level: data.bossLevel });
                 updateBossHpBar(data.currentHp, boss.totalHp);
                 
+                // Construimos el texto de botín a partir de la lista que devuelve el backend (ya calculada con su propia
+                // lógica de recompensas), formateando cada entrada como "- cantidad x nombre"
                 let lootMsg = "";
                 if (data.lootEarned && data.lootEarned.length > 0) {
                     lootMsg = `\n\n${t('battle.lootEarned')}\n` + data.lootEarned.map((l: any) => `- ${l.quantity}x ${l.name}`).join('\n');
                 }
 
+                // Elegimos el mensaje final según el desenlace: el jugador cayó derrotado, el jefe resucitó (fue derrotado por completo),
+                // o simplemente el jugador se retiró tras infligir daño sin acabar con él
                 if (isDead || stats.hp <= 0) {
                     Alert.alert(t('battle.fallenTitle'), `${t('battle.fallenDesc')}\n${t('battle.damageDealt', { damage: data.damageDealt })}${lootMsg}`);
                 } else if (data.respawned) {
@@ -458,6 +502,7 @@ export const ClanBossBattleScreen = () => {
 
     if (isLoading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.colors.primary} /></View>;
 
+    // Si no hay ningún jefe activo en este momento, mostramos una pantalla de "paz" en lugar del campo de batalla
     if (!boss) {
         return (
             <View style={styles.loadingContainer}>
@@ -492,11 +537,11 @@ export const ClanBossBattleScreen = () => {
 
     return (
         <Animated.View style={styles.container}>
-            {/* ── Flash overlays (non-interactive, always on top) ── */}
+            {/* Capas de destello (rojo al recibir daño, verde al acertar): no interactivas y siempre por encima del resto */}
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgFlash,      zIndex: 98 }]} />
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgFlashGreen, zIndex: 99 }]} />
 
-            {/* ── Header ── */}
+            {/* Cabecera con botón de volver y título de la arena */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
@@ -504,13 +549,11 @@ export const ClanBossBattleScreen = () => {
                 <Text style={styles.headerTitle}>{t('battle.arenaTitle')}</Text>
             </View>
 
-            {/* ════════════════════════════════════════
-                PLAYING: compact no-scroll battle layout
-                ════════════════════════════════════════ */}
+            {/* DURANTE EL COMBATE: layout compacto sin scroll para que toda la acción quepa en pantalla mientras se juega */}
             {isPlaying ? (
                 <View style={styles.battleLayout}>
 
-                    {/* Compact boss bar — horizontal row */}
+                    {/* Barra compacta del jefe: imagen, nombre, categoría y barra de HP en una fila horizontal */}
                     <View style={[styles.bossBar, boss.category === 'boss' && { borderColor: '#D69E2E' }]}>
                         <Animated.View style={{ transform: [{ translateX: bossShake }, { translateY: bossLunge }] }}>
                             {boss.imageUrl ? (
@@ -535,7 +578,7 @@ export const ClanBossBattleScreen = () => {
                         </View>
                     </View>
 
-                    {/* Player HUD — compact bar */}
+                    {/* HUD del jugador: nombre, vida (en rojo si baja del 30%), racha de aciertos y barra de maná si es Mago */}
                     <View style={styles.playerHUD}>
                         <View style={styles.playerHUDRow}>
                             <Text style={styles.playerNameSmall} numberOfLines={1}>{user?.username || 'Héroe'}</Text>
@@ -560,10 +603,10 @@ export const ClanBossBattleScreen = () => {
                         )}
                     </View>
 
-                    {/* Question + options — fills remaining space */}
+                    {/* Pregunta + opciones de respuesta — ocupa el espacio vertical restante */}
                     {currentTerm ? (
                         <>
-                            {/* Question card — grows to fill available vertical space */}
+                            {/* Tarjeta de la pregunta: si el término es de tipo imagen pedimos adivinar la técnica, si es texto pedimos traducir */}
                             <View style={styles.questionCardCompact}>
                                 {currentTerm.contentType === 'image' ? (
                                     <>
@@ -586,7 +629,7 @@ export const ClanBossBattleScreen = () => {
                                 )}
                             </View>
 
-                            {/* Options — 2×2 grid, no vertical scroll needed */}
+                            {/* Opciones de respuesta en cuadrícula 2×2: cada toque dispara handleAnswer con la opción elegida */}
                             <View style={styles.optionsGrid2x2}>
                                 {options.map((opt, i) => (
                                     <TouchableOpacity key={i} style={styles.optionBtn2x2} onPress={() => handleAnswer(opt)}>
@@ -605,12 +648,10 @@ export const ClanBossBattleScreen = () => {
                 </View>
 
             ) : (
-            /* ════════════════════════════════════════
-               LOBBY: full boss arena + class / start
-               ════════════════════════════════════════ */
+            /* ANTES DEL COMBATE (lobby): arena completa del jefe, selección de clase y botón de inicio */
                 <ScrollView contentContainerStyle={styles.content}>
 
-                    {/* Full Boss Arena */}
+                    {/* Arena completa: imagen grande del jefe, nombre, categoría y barra de HP */}
                     <View style={[styles.arena, boss.category === 'boss' && { borderColor: '#D69E2E', borderWidth: 2 }]}>
                         <Animated.View style={{ transform: [{ translateX: bossShake }, { translateY: bossLunge }] }}>
                             {boss.imageUrl ? (
@@ -633,7 +674,7 @@ export const ClanBossBattleScreen = () => {
                         </View>
                     </View>
 
-                    {/* Class Selection */}
+                    {/* Selector de clase RPG: solo se muestra si el jugador todavía no ha elegido ninguna (rpgClass === 'unassigned') */}
                     {isUnassigned && (
                         <View style={styles.classSelector}>
                             <Text style={styles.subtitle}>{t('battle.pickClass')}</Text>
@@ -662,7 +703,8 @@ export const ClanBossBattleScreen = () => {
                         </View>
                     )}
 
-                    {/* Start Button */}
+                    {/* Sección de inicio: aparece una vez elegida la clase. Muestra la clase, selector de aura para Monjes,
+                        aviso/atajo al campamento si el jugador está derrotado, y el botón para entrar en combate */}
                     {!isUnassigned && (
                         <View style={styles.startSection}>
                             <Text style={styles.classTag}>
@@ -793,7 +835,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         width: '100%',
     },
 
-    // Compact boss bar (horizontal)
+    // Barra de vida del jefe en formato compacto y horizontal
     bossBar: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
@@ -834,7 +876,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
         flex: 1,
     },
 
-    // Compact player HUD
+    // Estilos del HUD compacto del jugador (barra de vida/mana reducida durante el combate)
     playerHUD: {
         backgroundColor: theme.colors.surface,
         borderRadius: 12,

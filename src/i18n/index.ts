@@ -18,21 +18,22 @@ const resources = {
     pt: { translation: pt }
 };
 
-// Fallback to Spanish if something goes really wrong, but usually English is the global default.
-// The user requested Spanish and English. The app is currently in Spanish, so let's make Spanish the default if 'es' is not exactly detected but we want to be safe, or just use English as fallback.
+// Detectamos el idioma del dispositivo (p.ej. 'es-ES' o 'en-US') y nos quedamos solo con el codigo
+// base ('es', 'en'...) ya que nuestros recursos de traduccion estan organizados por idioma, no por region.
+// Si no se puede detectar, usamos español como valor por defecto
 const fullLocale = getLocales()[0]?.languageCode || 'es';
-const deviceLanguage = fullLocale.split('-')[0]; // Extract 'es' from 'es-ES' or 'en' from 'en-US'
+const deviceLanguage = fullLocale.split('-')[0]; // Extraemos 'es' de 'es-ES' o 'en' de 'en-US'
 
 i18n
     .use(initReactI18next)
     .init({
         resources,
-        lng: deviceLanguage, // Use base language (e.g., 'es', 'en', 'fr')
-        fallbackLng: 'en', // Fallback to English if device language is not available
+        lng: deviceLanguage, // Usamos el idioma base detectado (p.ej. 'es', 'en', 'fr')
+        fallbackLng: 'en', // Si el idioma del dispositivo no esta soportado, recurrimos al ingles
         supportedLngs: ['en', 'es', 'fr', 'de', 'it', 'pt'],
-        nonExplicitSupportedLngs: true, // Allows 'en-US' to map to 'en'
+        nonExplicitSupportedLngs: true, // Permite que variantes como 'en-US' se asocien automaticamente a 'en'
         interpolation: {
-            escapeValue: false // React already safes from XSS
+            escapeValue: false // No hace falta escapar valores: React ya protege contra XSS por defecto
         }
     });
 

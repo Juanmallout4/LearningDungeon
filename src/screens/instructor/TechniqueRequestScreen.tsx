@@ -11,6 +11,7 @@ import { ClubService } from '../../services/ClubService';
 import { TrackingService } from '../../services/TrackingService';
 import { VocabularyTerm } from '../../types';
 
+// Aqui configuramos las notas posibles que el instructor puede dar al calificar una tecnica (escala 1-5)
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
 
 export const TechniqueRequestScreen = ({ route }: any) => {
@@ -20,6 +21,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Si llegamos sin un grupo valido en los parametros, redirigimos al listado de actividades
     React.useEffect(() => {
         if (!group || typeof group !== 'object') {
             navigation.replace('ActivityList');
@@ -29,21 +31,26 @@ export const TechniqueRequestScreen = ({ route }: any) => {
     if (!group || typeof group !== 'object') return null;
 
     const [instructorId, setInstructorId] = useState<string | null>(null);
+    // Catalogo de tecnicas con imagen disponibles para pedir, y el filtro de tema seleccionado para acotarlo
     const [pool, setPool] = useState<VocabularyTerm[]>([]);
     const [isLoadingPool, setIsLoadingPool] = useState(true);
     const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
 
+    // Una vez creada la peticion de tecnica, pasamos a la fase de calificar a cada alumno del grupo
     const [request, setRequest] = useState<{ id: string; techniqueName: string; imageUrl?: string } | null>(null);
     const [students, setStudents] = useState<any[]>([]);
     const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+    // Mapa alumno -> calificacion ya guardada (nota, comentario y puntos extra otorgados), para pintar el estado en la lista
     const [grades, setGrades] = useState<Record<string, { score: number; comment?: string; pointsAwarded?: number }>>({});
 
+    // Estado del modal de calificacion: alumno seleccionado y los valores en borrador antes de guardar
     const [gradingStudent, setGradingStudent] = useState<any | null>(null);
     const [draftScore, setDraftScore] = useState<number>(5);
     const [draftComment, setDraftComment] = useState('');
     const [draftPoints, setDraftPoints] = useState('');
     const [isSavingGrade, setIsSavingGrade] = useState(false);
 
+    // Al montar, recuperamos el id del instructor logueado desde AsyncStorage para usarlo en las peticiones al backend
     React.useEffect(() => {
         const fetchInstructor = async () => {
             try {
@@ -56,6 +63,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
         fetchInstructor();
     }, []);
 
+    // Carga el catalogo de vocabulario de taekwondo ITF que tiene imagen asociada (son las tecnicas que se pueden "pedir")
     React.useEffect(() => {
         const loadPool = async () => {
             const clubId = user?.organizationId;
@@ -72,15 +80,18 @@ export const TechniqueRequestScreen = ({ route }: any) => {
         loadPool();
     }, [user?.organizationId]);
 
+    // Lista de temas unicos presentes en el catalogo, usada para generar los chips de filtro
     const topics = useMemo(
         () => Array.from(new Set(pool.map(v => v.topic).filter((tp): tp is string => !!tp))),
         [pool]
     );
+    // Catalogo filtrado por el tema seleccionado (o completo si no hay filtro activo)
     const filteredPool = useMemo(
         () => selectedTopic ? pool.filter(v => v.topic === selectedTopic) : pool,
         [pool, selectedTopic]
     );
 
+    // Crea la peticion de tecnica para el grupo con el termino elegido y, tras crearla, carga el listado de alumnos a calificar
     const handlePickTechnique = async (term: VocabularyTerm) => {
         if (!instructorId) return;
         try {
@@ -103,6 +114,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
         }
     };
 
+    // Abre el modal de calificacion para un alumno, precargando los valores si ya tenia una nota guardada (para poder editarla)
     const openGradingModal = (student: any) => {
         const existing = grades[student.id];
         setGradingStudent(student);
@@ -111,15 +123,19 @@ export const TechniqueRequestScreen = ({ route }: any) => {
         setDraftPoints(existing?.pointsAwarded ? String(existing.pointsAwarded) : '');
     };
 
+    // Cierra el modal de calificacion, salvo que se este guardando en ese momento (para evitar perder la operacion en curso)
     const closeGradingModal = () => {
         if (isSavingGrade) return;
         setGradingStudent(null);
     };
 
+    // Guarda la calificacion del alumno: envia nota/comentario/puntos al backend, otorga los puntos extra como bonus de juego
+    // si procede, y actualiza el mapa local de calificaciones para reflejar el cambio en la lista
     const saveGrade = async () => {
         if (!gradingStudent || !request || !instructorId || isSavingGrade) return;
         setIsSavingGrade(true);
         try {
+            // Solo consideramos validos los puntos extra si son un numero positivo; cualquier otro valor se trata como cero
             const pointsAwarded = parseInt(draftPoints, 10);
             const validPoints = !isNaN(pointsAwarded) && pointsAwarded > 0 ? pointsAwarded : 0;
 
@@ -131,6 +147,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
                 pointsAwarded: validPoints
             });
 
+            // Si se otorgaron puntos extra, los sumamos tambien al progreso de gamificacion del alumno (no bloqueante si falla)
             if (validPoints > 0) {
                 await ClubService.addGamePoints(gradingStudent.id, validPoints).catch(err =>
                     console.error('Failed to award bonus points', err)
@@ -150,6 +167,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
         }
     };
 
+    // Fase 1: cuadricula para elegir que tecnica pedir al grupo, con chips de filtro por tema (solo si hay mas de uno)
     const renderPicker = () => (
         <>
             <View style={styles.header}>
@@ -162,6 +180,7 @@ export const TechniqueRequestScreen = ({ route }: any) => {
                         <Text style={styles.headerSubtitle}>{group?.name} · {activityName}</Text>
                     </View>
                 </View>
+                {/* Chips de filtro por tema; solo se muestran si el catalogo tiene mas de un tema distinto */}
                 {topics.length > 1 && (
                     <View style={styles.topicRow}>
                         <TouchableOpacity

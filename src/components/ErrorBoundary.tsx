@@ -11,22 +11,27 @@ interface State {
     errorInfo: React.ErrorInfo | null;
 }
 
+// Aqui atrapamos cualquier error inesperado del arbol de componentes hijo y mostramos
+// una pantalla de error en vez de dejar que la app se quede en blanco/se cierre
 export class ErrorBoundary extends React.Component<Props, State> {
     constructor(props: Props) {
         super(props);
         this.state = { hasError: false, error: null, errorInfo: null };
     }
 
+    // React invoca esto durante el renderizado tras un error: actualizamos el estado para mostrar el fallback
     static getDerivedStateFromError(error: Error) {
         return { hasError: true, error };
     }
 
+    // Aqui registramos el error y la pila de componentes para poder depurarlo despues
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
         console.error("ErrorBoundary caught an error", error, errorInfo);
         this.setState({ errorInfo });
     }
 
     render() {
+        // Si hubo un error, mostramos una pantalla con el mensaje y la pila en vez del contenido normal
         if (this.state.hasError) {
             return (
                 <ScrollView style={{ flex: 1, backgroundColor: '#ae1f1f', padding: 20 }}>

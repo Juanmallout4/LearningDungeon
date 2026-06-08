@@ -21,6 +21,7 @@ export const MarketScreen = () => {
     const navigation = useNavigation<any>();
     const { theme } = useTheme();
     const styles = createStyles(theme);
+    // Aqui mapeamos cada rareza de objeto RPG a su color distintivo para insignias y bordes
     const getRarityColor = (rarity: string) => {
         switch (rarity) {
             case 'rare': return '#3182CE';
@@ -30,6 +31,8 @@ export const MarketScreen = () => {
         }
     };
 
+    // Catálogo de la tienda del club, ofertas especiales del mercader ambulante (solo domingos) y objetos
+    // del inventario del jugador que el mercader está dispuesto a comprarle (sellableItems)
     const [items, setItems] = useState<MarketItem[]>([]);
     const [merchantDeals, setMerchantDeals] = useState<MarketItem[]>([]);
     const [sellableItems, setSellableItems] = useState<any[]>([]);
@@ -39,20 +42,25 @@ export const MarketScreen = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isMerchantLoading, setIsMerchantLoading] = useState(false);
     const [currentUser, setCurrentUser] = useState<any>(null);
+    // Conjunto de tipos de actividad que el usuario practica (taekwondo/inglés/ballet); se usa para no mostrarle objetos que no le aplican
     const [practicedTypes, setPracticedTypes] = useState<Set<string>>(new Set());
     const [category, setCategory] = useState<'all' | 'physical' | 'virtual' | 'rpg'>('all');
+    // El mercader ambulante solo aparece domingos y martes (días 0 y 2 de la semana)
     const [isSunday, setIsSunday] = useState([0, 2].includes(new Date().getDay()));
     const [activeSection, setActiveSection] = useState<'store' | 'merchant'>('store');
+    // Objeto pendiente de confirmar compra/venta: usamos modales propios porque Alert.alert con botones no funciona en web
     const [pendingBuyItem, setPendingBuyItem] = useState<MarketItem | null>(null);
     const [pendingSellItem, setPendingSellItem] = useState<{ group: any; qty: number } | null>(null);
-    
-    // Advanced filters
+
+    // Filtros avanzados de la tienda: búsqueda por texto (con debounce para no filtrar en cada pulsación), rareza y slot de equipo
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
     const [rarityFilter, setRarityFilter] = useState('all');
     const [slotFilter, setSlotFilter] = useState('all');
 
-    // Memoised filtered store items — only recomputes when deps change, not on every render
+    // Lista de la tienda ya filtrada según: tipo de actividad practicada, texto de búsqueda, categoría
+    // (físico/virtual/rpg) y, si la categoría es 'rpg', también por rareza y slot de equipo.
+    // Memoizada para recalcularse solo cuando cambian sus dependencias, no en cada render
     const filteredItems = useMemo(() => items.filter(i => {
         if (i.activityType && !practicedTypes.has(i.activityType)) return false;
         if (debouncedSearch && !i.name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
@@ -70,6 +78,8 @@ export const MarketScreen = () => {
         loadData();
     }, []);
 
+    // Carga inicial: trae usuario, catálogo de la tienda del club, puntos del usuario y tipos de actividad que practica.
+    // Si es día de mercader (domingo/martes), además carga sus ofertas y los objetos que compraría del inventario del jugador
     const loadData = async () => {
         setIsLoading(true);
         try {
@@ -88,7 +98,7 @@ export const MarketScreen = () => {
                     ]);
                     setItems(marketItems);
                     setPracticedTypes(practiced);
-                    // Use points or oro as fallback
+                    // Algunos endpoints antiguos devuelven "oro" en vez de "points"; usamos el que esté disponible
                     setPoints(userPoints.points !== undefined ? userPoints.points : (userPoints as any).oro || 0);
 
                     if (isSunday) {
@@ -117,6 +127,7 @@ export const MarketScreen = () => {
         }
     };
 
+    // Trae las ofertas especiales del mercader ambulante para este usuario y club (solo disponibles los días que aparece)
     const loadMerchantDeals = async (userId: string, clubId: string) => {
         setIsMerchantLoading(true);
         try {
@@ -132,7 +143,8 @@ export const MarketScreen = () => {
         }
     };
 
-    // Items the merchant is willing to BUY from the player (flagged is_merchant_buyable on the catalog item)
+    // Trae el inventario completo del jugador y filtra los objetos que el mercader está dispuesto a comprarle:
+    // deben estar marcados como is_merchant_buyable en el catálogo y no estar equipados actualmente (no se pueden vender objetos en uso)
     const loadSellableItems = async (userId: string) => {
         setIsSellableLoading(true);
         try {
@@ -149,8 +161,9 @@ export const MarketScreen = () => {
         }
     };
 
-    // Identical sellable items (e.g. multiple "Un Palo") are grouped into one card with a quantity selector,
-    // instead of showing one button per copy
+    // Agrupa las copias idénticas del inventario vendible por item_id (p.ej. varios "Un Palo") en una sola tarjeta
+    // con selector de cantidad, en lugar de mostrar un botón de venta por cada copia individual.
+    // Cada grupo guarda además la lista de inventoryIds (las filas reales de inventario) para poder vender unidad por unidad
     const groupedSellableItems = useMemo(() => {
         const groups = new Map<string, any>();
         sellableItems.forEach(item => {
@@ -165,18 +178,23 @@ export const MarketScreen = () => {
         return Array.from(groups.values());
     }, [sellableItems]);
 
+    // Cantidad a vender seleccionada por el usuario para cada item_id (sellQty), siempre acotada entre 1 y el máximo disponible en ese grupo
     const [sellQty, setSellQty] = useState<Record<string, number>>({});
     const getSellQty = (itemId: string, max: number) => Math.min(Math.max(sellQty[itemId] || 1, 1), max);
     const adjustSellQty = (itemId: string, delta: number, max: number) => {
         setSellQty(prev => ({ ...prev, [itemId]: Math.min(Math.max(getSellQty(itemId, max) + delta, 1), max) }));
     };
 
+    // Prepara la venta: calcula la cantidad elegida para este grupo y abre el modal de confirmación (la venta real ocurre en confirmSell)
     const handleSellToMerchant = (group: any) => {
         if (!currentUser) return;
         const qty = getSellQty(group.item_id, group.quantity);
         setPendingSellItem({ group, qty });
     };
 
+    // Ejecuta la venta confirmada: por cada unidad pedida llama al endpoint de venta con su inventoryId concreto
+    // (uno a uno, deteniéndose si alguna falla), suma las recompensas recibidas, retira del estado local los objetos
+    // ya vendidos, refresca el saldo de puntos del jugador y muestra el resultado (éxito total, parcial o fallo)
     const confirmSell = async () => {
         if (!currentUser || !pendingSellItem) return;
         const { group, qty } = pendingSellItem;
@@ -220,6 +238,7 @@ export const MarketScreen = () => {
         }
     };
 
+    // Antes de abrir el modal de confirmación de compra, comprobamos que el jugador tenga puntos suficientes
     const handleBuy = (item: MarketItem) => {
         if (!currentUser) return;
         if (points < item.costPoints) {
@@ -229,6 +248,7 @@ export const MarketScreen = () => {
         setPendingBuyItem(item);
     };
 
+    // Ejecuta la compra confirmada a través de ClubService, actualiza el saldo de puntos con el valor que devuelve el backend y avisa al usuario
     const confirmBuy = async () => {
         if (!currentUser || !pendingBuyItem) return;
         const item = pendingBuyItem;
@@ -519,7 +539,7 @@ export const MarketScreen = () => {
                 />
             )}
 
-            {/* BUY CONFIRMATION MODAL — Alert.alert with buttons is a no-op on web */}
+            {/* MODAL DE CONFIRMACION DE COMPRA — usamos un modal propio porque Alert.alert con botones no funciona en web */}
             <Modal visible={pendingBuyItem !== null} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -544,7 +564,7 @@ export const MarketScreen = () => {
                 </View>
             </Modal>
 
-            {/* SELL CONFIRMATION MODAL — Alert.alert with buttons is a no-op on web */}
+            {/* MODAL DE CONFIRMACION DE VENTA — usamos un modal propio porque Alert.alert con botones no funciona en web */}
             <Modal visible={pendingSellItem !== null} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -851,7 +871,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
     sectionTabTextActive: {
         color: '#FFF',
     },
-    // Buy confirmation modal
+    // Estilos del modal de confirmacion de compra
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.7)',

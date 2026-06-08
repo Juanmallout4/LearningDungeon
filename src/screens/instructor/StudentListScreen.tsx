@@ -14,11 +14,13 @@ import { TrackingService } from '../../services/TrackingService';
 export const StudentListScreen = ({ route }: any) => {
     const navigation = useNavigation<any>();
     const { group, activityName, activityId, activityType, initialMode, initialDate, isAuto } = route.params || {};
+    // Solo en taekwondo ITF tiene sentido evaluar tuls; el resto de actividades van directas a pasar lista
     const isTaekwondoActivity = activityType === 'taekwondo_itf';
     const { theme } = useTheme();
     const { t } = useTranslation();
     const styles = createStyles(theme);
 
+    // Si llegamos aqui sin un grupo valido en los parametros, mandamos al usuario al listado de actividades
     React.useEffect(() => {
         if (!group || typeof group !== 'object') {
             navigation.replace('ActivityList');
@@ -28,7 +30,9 @@ export const StudentListScreen = ({ route }: any) => {
     if (!group || typeof group !== 'object') return null;
 
     const [searchQuery, setSearchQuery] = useState('');
+    // Modo de pantalla: evaluar tuls o pasar lista de asistencia (puede venir forzado desde la navegacion)
     const [mode, setMode] = useState<'evaluate' | 'attendance'>(initialMode || 'evaluate');
+    // Si no nos pasan una fecha concreta, calculamos la de hoy en formato dd-mm-aaaa para usarla por defecto
     const [attendanceDate, setAttendanceDate] = useState(initialDate || (() => {
         const today = new Date();
         const d = String(today.getDate()).padStart(2, '0');
@@ -36,19 +40,22 @@ export const StudentListScreen = ({ route }: any) => {
         const y = today.getFullYear();
         return `${d}-${m}-${y}`;
     })());
+    // Mapa alumno -> estado de asistencia (presente/ausente/tarde) para la fecha seleccionada
     const [attendanceRecords, setAttendanceRecords] = useState<Record<string, AttendanceStatus | undefined>>({});
 
     const [students, setStudents] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    // Indica si la asistencia se genero automaticamente y todavia falta que el instructor la confirme
     const [isAutoUnconfirmed, setIsAutoUnconfirmed] = useState(isAuto || false);
 
-    // TUL evaluations only conceptually belong to Taekwondo ITF: force attendance mode for other activities
+    // Las evaluaciones de tul solo aplican a taekwondo ITF: si la actividad es otra, forzamos el modo asistencia
     React.useEffect(() => {
         if (!isTaekwondoActivity && mode === 'evaluate') {
             setMode('attendance');
         }
     }, [isTaekwondoActivity]);
 
+    // Carga inicial: traemos los alumnos del grupo y, si estamos en modo asistencia, tambien los registros del dia
     React.useEffect(() => {
         const loadInitData = async () => {
             if (!group?.id) return;
@@ -60,6 +67,7 @@ export const StudentListScreen = ({ route }: any) => {
                     const date = initialDate || attendanceDate;
                     const recordsMap = await TrackingService.getGroupAttendanceByDate(group.id, date);
 
+                    // Completamos con 'present' a los alumnos que todavia no tienen registro para esta fecha
                     const allRecords: Record<string, AttendanceStatus> = {};
                     const studentsToSave: string[] = [];
 
@@ -74,6 +82,7 @@ export const StudentListScreen = ({ route }: any) => {
 
                     setAttendanceRecords(allRecords);
 
+                    // Persistimos en el backend los registros que faltaban, para que queden guardados como 'present'
                     if (studentsToSave.length > 0) {
                         await Promise.all(
                             studentsToSave.map(id =>
@@ -91,12 +100,15 @@ export const StudentListScreen = ({ route }: any) => {
         loadInitData();
     }, [group?.id, initialDate, mode]);
 
+    // Aplicamos un pequeño retraso a la busqueda para no filtrar en cada pulsacion de tecla
     const debouncedSearch = useDebounce(searchQuery, 250);
+    // Lista de alumnos filtrada por nombre segun lo que el instructor va escribiendo en el buscador
     const filteredStudents = useMemo(
         () => students.filter(s => s.name.toLowerCase().includes(debouncedSearch.toLowerCase())),
         [students, debouncedSearch]
     );
 
+    // Al pulsar un alumno: en modo evaluar abrimos su pantalla de evaluacion; en modo asistencia rotamos su estado
     const handleStudentPress = async (student: any) => {
         if (mode === 'evaluate') {
             if (!isTaekwondoActivity) return;
@@ -104,6 +116,7 @@ export const StudentListScreen = ({ route }: any) => {
         } else if (mode === 'attendance') {
             const currentStatus = attendanceRecords[student.id] ?? 'present';
 
+            // Ciclo de estados al tocar la tarjeta: presente -> ausente -> tarde -> presente
             let nextStatus: AttendanceStatus;
             if (currentStatus === 'present') {
                 nextStatus = 'absent';
@@ -113,6 +126,7 @@ export const StudentListScreen = ({ route }: any) => {
                 nextStatus = 'present';
             }
 
+            // Actualizamos primero la UI de forma optimista y luego sincronizamos con el servidor
             setAttendanceRecords(prev => ({
                 ...prev,
                 [student.id]: nextStatus
@@ -128,6 +142,7 @@ export const StudentListScreen = ({ route }: any) => {
         }
     };
 
+    // Confirma manualmente una asistencia que el sistema genero de forma automatica
     const handleConfirmAuto = async () => {
         try {
             await TrackingService.verifyAttendance(group.id, attendanceDate);
@@ -138,24 +153,27 @@ export const StudentListScreen = ({ route }: any) => {
         }
     };
 
+    // Aqui cambiamos entre el modo de evaluacion de tuls y el de pasar lista
     const toggleMode = () => {
         setMode(prev => (prev === 'evaluate' ? 'attendance' : 'evaluate'));
     };
 
+    // Calcula el color de fondo/borde de la tarjeta segun el estado de asistencia del alumno
     const getAttendanceCardStyle = (studentId: string) => {
         if (mode !== 'attendance') return {};
 
-        const status = attendanceRecords[studentId] || 'present'; // Default to present visually
+        const status = attendanceRecords[studentId] || 'present'; // Si no hay registro, lo pintamos como presente
         if (status === 'absent') {
             return { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error };
         } else if (status === 'late') {
             return { backgroundColor: theme.colors.warning + '15', borderColor: theme.colors.warning };
         } else {
-            // Present
+            // Presente
             return { backgroundColor: theme.colors.success + '15', borderColor: theme.colors.success };
         }
     };
 
+    // Devuelve el icono que representa el estado de asistencia actual del alumno
     const renderAttendanceIcon = (studentId: string) => {
         const status = attendanceRecords[studentId] || 'present';
         if (status === 'absent') {
@@ -179,6 +197,7 @@ export const StudentListScreen = ({ route }: any) => {
                         <Text style={styles.headerSubtitle}>{activityName} - {t('instructor.studentsCount', { count: filteredStudents.length })}</Text>
                     </View>
                     <View style={styles.headerActions}>
+                        {/* Acceso al historial solo tiene sentido cuando estamos pasando lista */}
                         {mode === 'attendance' && (
                             <TouchableOpacity
                                 onPress={() => navigation.navigate('AttendanceHistory', { group, activityName, activityId, activityType })}
@@ -187,6 +206,7 @@ export const StudentListScreen = ({ route }: any) => {
                                 <Ionicons name="time-outline" size={24} color={theme.colors.primary} />
                             </TouchableOpacity>
                         )}
+                        {/* El boton de cambiar de modo solo aparece para actividades de taekwondo ITF */}
                         {isTaekwondoActivity && (
                             <TouchableOpacity onPress={toggleMode} style={styles.modeToggleButton}>
                                 <Ionicons
@@ -199,6 +219,7 @@ export const StudentListScreen = ({ route }: any) => {
                     </View>
                 </View>
 
+                {/* Selector/visor de fecha y boton de confirmacion, solo visibles en modo asistencia */}
                 {mode === 'attendance' && (
                     <View style={styles.dateDisplayContainer}>
                         <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} style={{ marginRight: 8 }} />
@@ -206,6 +227,7 @@ export const StudentListScreen = ({ route }: any) => {
                         <View style={styles.dateChip}>
                             <Text style={styles.dateChipText}>{attendanceDate}</Text>
                         </View>
+                        {/* Si la asistencia se genero sola, ofrecemos al instructor confirmarla con un toque */}
                         {isAutoUnconfirmed && (
                             <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmAuto}>
                                 <Text style={styles.confirmButtonText}>{t('attendance.confirm', { defaultValue: 'Confirmar' })}</Text>
@@ -246,6 +268,7 @@ export const StudentListScreen = ({ route }: any) => {
                             <View style={styles.cardContent}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Text style={styles.studentName}>{item.name}</Text>
+                                    {/* En modo asistencia mostramos un icono que avisa si el alumno tiene consentimiento de imagen */}
                                     {mode === 'attendance' && (
                                         <View style={{ marginLeft: 8 }}>
                                             <Ionicons
@@ -260,6 +283,7 @@ export const StudentListScreen = ({ route }: any) => {
                                     <BeltDisplay rank={item.rank} showText={true} width={120} height={12} />
                                 </View>
                             </View>
+                            {/* Segun el modo activo mostramos el icono de editar evaluacion o el de estado de asistencia */}
                             {mode === 'evaluate' ? (
                                 <Ionicons name="create-outline" size={24} color={theme.colors.primary} />
                             ) : (

@@ -15,9 +15,9 @@ const AppContent = () => {
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
-    // HubSpot Tracking Code Injection (Web only)
+    // Inyectamos el script de tracking de HubSpot solo en la version web
     if (Platform.OS === 'web') {
-      // Disable the chat widget but keep tracking
+      // Desactivamos el widget de chat pero mantenemos el tracking de visitas
       (window as any).hsConversationsSettings = {
         loadImmediately: false
       };
@@ -32,10 +32,10 @@ const AppContent = () => {
       console.log('HubSpot script injected');
     }
 
-    // Register token on start
+    // Pedimos el token de notificaciones push al arrancar la app
     NotificationService.registerForPushNotificationsAsync();
 
-    // Listen to notification tap events
+    // Escuchamos cuando el usuario pulsa una notificacion para reaccionar a ella
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('Notification tapped:', response);
     });
@@ -47,7 +47,7 @@ const AppContent = () => {
     };
   }, []);
 
-  // Combine React Navigation theme with our custom colors
+  // Aqui mezclamos el tema base de React Navigation con los colores de nuestro ThemeContext
   const navigationTheme = theme.isDark ? {
     ...DarkTheme,
     colors: {
@@ -70,6 +70,7 @@ const AppContent = () => {
     }
   };
 
+  // Aqui configuramos los deep links: cada pantalla queda asociada a una ruta tipo URL (web y app nativa)
   const linking: LinkingOptions<ReactNavigation.RootParamList> = {
     prefixes: ['Learning Dungeon://'],
     config: {
