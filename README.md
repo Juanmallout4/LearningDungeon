@@ -105,7 +105,7 @@ El backend está implementado con Express 5, que introduce manejo de promesas na
 
 - Compatibilidad con el ecosistema JavaScript/TypeScript del frontend, reduciendo el cambio de contexto cognitivo.
 - Alto rendimiento en operaciones I/O-intensivas (consultas a base de datos, WebSockets) gracias al modelo de event loop no bloqueante.
-- Ecosistema npm maduro para integraciones (Socket.io, bcrypt, nodemailer, pg).
+- Ecosistema npm para integraciones (Socket.io, bcrypt, nodemailer, pg).
 
 ### 3.3 PostgreSQL
 
